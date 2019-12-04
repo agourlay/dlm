@@ -1,6 +1,7 @@
 use clap::{value_t, App, Arg};
 use futures::{stream, StreamExt};
 use reqwest::Client;
+use std::fs::OpenOptions;
 use std::fs::{rename, File};
 use std::io::{prelude::*, BufReader};
 use std::path::Path;
@@ -56,19 +57,66 @@ async fn download_link(
         let msg = format!("Skipping {} because it is already present", final_name);
         Ok(msg)
     } else {
-        // initiate file download
-        let mut res = client.get(link.as_str()).send().await?;
-        // create file.part
-        let tmp_name = format!("{}/{}part", output_dir, file_name);
-        let mut file = File::create(&tmp_name)?;
-        // incremental save chunk by chunk
-        while let Some(chunk) = res.chunk().await? {
-            file.write_all(&chunk)?;
+        let url_str = link.as_str();
+        let head_result = client.head(url_str).send().await?;
+        if !head_result.status().is_success() {
+            let message = format!("{} {}", url_str, head_result.status());
+            Err(DlmError { message })
+        } else {
+            let tmp_name = format!("{}/{}part", output_dir, file_name);
+            let query_range = {
+                if Path::new(&tmp_name).exists() {
+                    // get existing file size
+                    let tmp_size = File::open(&tmp_name)?.metadata()?.len();
+                    // get remote file size and range capabilities
+                    let content_length = head_result.content_length();
+                    let accept_ranges = head_result
+                        .headers()
+                        .get("Accept-Ranges")
+                        .and_then(|ct_len| ct_len.to_str().ok());
+                    match (accept_ranges, content_length) {
+                        (Some("bytes"), Some(cl)) => {
+                            let range_msg = format!("bytes={}-{}", tmp_size, cl);
+                            println!("Found part file for {} with size {} and it will be resumed with range {}", tmp_name, tmp_size, range_msg);
+                            Some(range_msg)
+                        }
+                        _ => {
+                            println!(
+                                "Found part file for {} with size {} but it will be overridden because the server does not support querying a range of bytes",
+                                tmp_name, tmp_size
+                            );
+                            None
+                        }
+                    }
+                } else {
+                    println!("Starting to download {}", url_str);
+                    None
+                }
+            };
+            // create/open file.part
+            let mut file = match query_range {
+                Some(_) => OpenOptions::new()
+                    .append(true)
+                    .create(false)
+                    .open(&tmp_name)?,
+                None => File::create(&tmp_name)?,
+            };
+            // building the request
+            let mut request = client.get(url_str);
+            if let Some(range) = query_range {
+                request = request.header("Range", range)
+            }
+            // initiate file download
+            let mut res = request.send().await?;
+            // incremental save chunk by chunk into part file
+            while let Some(chunk) = res.chunk().await? {
+                file.write_all(&chunk)?;
+            }
+            // rename part file to final
+            rename(&tmp_name, &final_name)?;
+            let msg = format!("Completed {}", final_name);
+            Ok(msg)
         }
-        // rename part file to final
-        rename(&tmp_name, &final_name)?;
-        let msg = format!("Completed {}", final_name);
-        Ok(msg)
     }
 }
 

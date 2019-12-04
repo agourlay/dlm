@@ -2,7 +2,13 @@
 
 [![Build Status](https://travis-ci.org/agourlay/dlm.svg?branch=master)](https://travis-ci.org/agourlay/dlm)
 
-A minimal download manager accepting as input a file with one link per line.
+A minimal download manager that works just fine.
+
+## features
+
+- read URLs from a text file (one URL per line)
+- control maximum number of concurrent downloads
+- resume interrupted downloads if possible
 
 ```
 ./dlm --help
