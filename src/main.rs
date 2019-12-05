@@ -1,21 +1,18 @@
 use clap::{value_t, App, Arg};
-use futures::{stream, StreamExt};
 use reqwest::Client;
-use std::fs::OpenOptions;
-use std::fs::{rename, File};
-use std::io::{prelude::*, BufReader};
 use std::path::Path;
-use tokio;
+use tokio::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), DlmError> {
     let (input_file, max_concurrent_downloads, output_dir) = get_args();
-    let file = File::open(input_file)?;
-    let reader = BufReader::new(file);
+    let file = tokio::fs::File::open(input_file).await?;
+    let file_reader = tokio::io::BufReader::new(file);
     let client = Client::builder().build()?;
     let output_dir_ref = &output_dir;
     let client_ref = &client;
-    stream::iter(reader.lines())
+    file_reader
+        .lines()
         .for_each_concurrent(max_concurrent_downloads, |link_res| {
             async move {
                 match link_res {
@@ -67,7 +64,11 @@ async fn download_link(
             let query_range = {
                 if Path::new(&tmp_name).exists() {
                     // get existing file size
-                    let tmp_size = File::open(&tmp_name)?.metadata()?.len();
+                    let tmp_size = tokio::fs::File::open(&tmp_name)
+                        .await?
+                        .metadata()
+                        .await?
+                        .len();
                     // get remote file size and range capabilities
                     let content_length = head_result.content_length();
                     let accept_ranges = head_result
@@ -95,11 +96,14 @@ async fn download_link(
             };
             // create/open file.part
             let mut file = match query_range {
-                Some(_) => OpenOptions::new()
-                    .append(true)
-                    .create(false)
-                    .open(&tmp_name)?,
-                None => File::create(&tmp_name)?,
+                Some(_) => {
+                    tokio::fs::OpenOptions::new()
+                        .append(true)
+                        .create(false)
+                        .open(&tmp_name)
+                        .await?
+                }
+                None => tokio::fs::File::create(&tmp_name).await?,
             };
             // building the request
             let mut request = client.get(url_str);
@@ -110,10 +114,10 @@ async fn download_link(
             let mut res = request.send().await?;
             // incremental save chunk by chunk into part file
             while let Some(chunk) = res.chunk().await? {
-                file.write_all(&chunk)?;
+                file.write_all(&chunk).await?;
             }
             // rename part file to final
-            rename(&tmp_name, &final_name)?;
+            tokio::fs::rename(&tmp_name, &final_name).await?;
             let msg = format!("Completed {}", final_name);
             Ok(msg)
         }
