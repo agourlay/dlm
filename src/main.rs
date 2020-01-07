@@ -4,7 +4,10 @@ mod downloader;
 mod file_link;
 mod progress_bars;
 
+use futures_retry::{FutureRetry, RetryPolicy};
+use futures_util::stream::StreamExt;
 use reqwest::Client;
+use std::time::Duration;
 use tokio::fs as tfs;
 use tokio::prelude::*;
 
@@ -18,7 +21,10 @@ async fn main() -> Result<(), DlmError> {
     let (input_file, max_concurrent_downloads, output_dir) = get_args();
     let file = tfs::File::open(input_file).await?;
     let file_reader = tokio::io::BufReader::new(file);
-    let client = Client::builder().build()?;
+    let client = Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .max_idle_per_host(0)
+        .build()?;
     let od_ref = &output_dir;
     let c_ref = &client;
 
@@ -34,8 +40,11 @@ async fn main() -> Result<(), DlmError> {
                     Err(e) => println!("Error with links iterator {}", e),
                     Ok(link) => {
                         let pb = rx_ref.recv().expect("channel should not fail");
-                        let processed = download_link(link, c_ref, od_ref, &pb).await;
-                        match processed {
+                        let processed = FutureRetry::new(
+                            || download_link(&link, c_ref, od_ref, &pb),
+                            retry_on_connection_drop,
+                        );
+                        match processed.await {
                             Ok(info) => pb.println(info),
                             Err(e) => pb.println(format!("Error: {}", e.message)),
                         }
@@ -46,4 +55,15 @@ async fn main() -> Result<(), DlmError> {
         })
         .await;
     Ok(())
+}
+
+const CONNECTION_CLOSED: &str = "connection closed before message completed";
+const BODY_ERROR: &str = "error reading a body from connection";
+
+fn retry_on_connection_drop(e: DlmError) -> RetryPolicy<DlmError> {
+    if e.message.contains(BODY_ERROR) || e.message.contains(CONNECTION_CLOSED) {
+        RetryPolicy::WaitRetry(Duration::from_secs(1))
+    } else {
+        RetryPolicy::ForwardError(e)
+    }
 }

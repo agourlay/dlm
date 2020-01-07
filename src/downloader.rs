@@ -9,15 +9,15 @@ use crate::file_link::FileLink;
 use crate::progress_bars::message_progress_bar;
 
 pub async fn download_link(
-    raw_link: String,
+    raw_link: &String,
     client: &Client,
     output_dir: &str,
     pb: &ProgressBar,
 ) -> Result<String, DlmError> {
-    let file_link = FileLink::new(raw_link)?;
+    let file_link = FileLink::new(raw_link.clone())?;
     let final_name = &file_link.full_path(output_dir);
     if Path::new(final_name).exists() {
-        let msg = format!("Skipping {} because it is already present", final_name);
+        let msg = format!("Skipping {} because it is already completed", final_name);
         Ok(msg)
     } else {
         let url = file_link.url.as_str();
@@ -94,8 +94,6 @@ async fn compute_query_range(
         match (accept_ranges, content_length) {
             (Some("bytes"), Some(cl)) => {
                 pb.set_position(tmp_size);
-                let log = format!("Found part file {} which can be resumed", tmp_name);
-                pb.println(log);
                 let range_msg = format!("bytes={}-{}", tmp_size, cl);
                 Ok(Some(range_msg))
             }
