@@ -59,10 +59,12 @@ async fn main() -> Result<(), DlmError> {
 
 const CONNECTION_CLOSED: &str = "connection closed before message completed";
 const BODY_ERROR: &str = "error reading a body from connection";
+const DEADLINE_ELAPSED: &str = "deadline has elapsed";
 
 fn retry_on_connection_drop(e: DlmError) -> RetryPolicy<DlmError> {
-    if e.message.contains(BODY_ERROR) || e.message.contains(CONNECTION_CLOSED) {
-        RetryPolicy::WaitRetry(Duration::from_secs(1))
+    //TODO replace with pattern matching on enum type
+    if e.message.contains(BODY_ERROR) || e.message.contains(CONNECTION_CLOSED) || e.message.contains(DEADLINE_ELAPSED) {
+        RetryPolicy::WaitRetry(Duration::from_secs(10))
     } else {
         RetryPolicy::ForwardError(e)
     }

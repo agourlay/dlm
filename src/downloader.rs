@@ -3,6 +3,7 @@ use reqwest::Client;
 use std::path::Path;
 use tokio::fs as tfs;
 use tokio::prelude::*;
+use tokio::time::{timeout, Duration};
 
 use crate::dlm_error::DlmError;
 use crate::file_link::FileLink;
@@ -66,7 +67,8 @@ pub async fn download_link(
             // initiate file download
             let mut res = request.send().await?;
             // incremental save chunk by chunk into part file
-            while let Some(chunk) = res.chunk().await? {
+            let chunk_timeout = Duration::from_secs(60);
+            while let Some(chunk) = timeout(chunk_timeout, res.chunk()).await?? {
                 file.write_all(&chunk).await?;
                 let new_pb_position = downloaded + chunk.len() as u64;
                 downloaded = new_pb_position;
