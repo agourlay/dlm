@@ -63,7 +63,7 @@ fn url_decode(data: &str) -> Result<String, DlmError> {
         }
     }
     String::from_utf8(unescaped_bytes).or_else(|e| {
-        Err(DlmError {
+        Err(DlmError::UrlDecodeError {
             message: e.to_string(),
         })
     })

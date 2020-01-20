@@ -46,7 +46,7 @@ async fn main() -> Result<(), DlmError> {
                         );
                         match processed.await {
                             Ok(info) => pb.println(info),
-                            Err(e) => pb.println(format!("Error: {}", e.message)),
+                            Err(e) => pb.println(format!("Error: {:#?}", e)),
                         }
                         tx_ref.send(pb).expect("channel should not fail");
                     }
@@ -57,15 +57,9 @@ async fn main() -> Result<(), DlmError> {
     Ok(())
 }
 
-const CONNECTION_CLOSED: &str = "connection closed before message completed";
-const BODY_ERROR: &str = "error reading a body from connection";
-const DEADLINE_ELAPSED: &str = "deadline has elapsed";
-
 fn retry_on_connection_drop(e: DlmError) -> RetryPolicy<DlmError> {
-    //TODO replace with pattern matching on enum type
-    if e.message.contains(BODY_ERROR) || e.message.contains(CONNECTION_CLOSED) || e.message.contains(DEADLINE_ELAPSED) {
-        RetryPolicy::WaitRetry(Duration::from_secs(10))
-    } else {
-        RetryPolicy::ForwardError(e)
+    match e {
+        DlmError::ConnectionClosed | DlmError::ResponseBodyError | DlmError::DeadLineElapsedTimeout => RetryPolicy::WaitRetry(Duration::from_secs(10)),
+        _  => RetryPolicy::ForwardError(e)
     }
 }

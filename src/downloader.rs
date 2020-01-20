@@ -18,7 +18,7 @@ pub async fn download_link(
     let file_link = FileLink::new(raw_link.clone())?;
     let final_name = &file_link.full_path(output_dir);
     if Path::new(final_name).exists() {
-        let msg = format!("Skipping {} because it is already completed", final_name);
+        let msg = format!("Skipping {} because it is already completed", file_link.file_name);
         Ok(msg)
     } else {
         let url = file_link.url.as_str();
@@ -32,10 +32,15 @@ pub async fn download_link(
 
         if !head_result.status().is_success() {
             let message = format!("{} {}", url, head_result.status());
-            Err(DlmError { message })
+            Err(DlmError::ResponseStatusNotSuccess { message })
         } else {
-            // Reset progress bar for next file
+            // setup progress bar for the file
             pb.reset();
+            pb.set_message(message_progress_bar(&file_link.file_name).as_str());
+            if let Some(total_size) = content_length {
+                pb.set_length(total_size);
+            };
+
             let tmp_name = format!("{}/{}part", output_dir, file_link.file_name_no_extension);
             let query_range =
                 compute_query_range(pb, content_length, accept_ranges, &tmp_name).await?;
@@ -52,12 +57,6 @@ pub async fn download_link(
                 None => tfs::File::create(&tmp_name).await?,
             };
 
-            // setup progress bar
-            let total_size = content_length.unwrap();
-            pb.set_length(total_size);
-            pb.set_message(message_progress_bar(&file_link.file_name).as_str());
-            let mut downloaded = pb.position();
-
             // building the request
             let mut request = client.get(url);
             if let Some(range) = query_range {
@@ -70,15 +69,13 @@ pub async fn download_link(
             let chunk_timeout = Duration::from_secs(60);
             while let Some(chunk) = timeout(chunk_timeout, res.chunk()).await?? {
                 file.write_all(&chunk).await?;
-                let new_pb_position = downloaded + chunk.len() as u64;
-                downloaded = new_pb_position;
-                pb.set_position(new_pb_position);
+                pb.inc(chunk.len() as u64);
             }
 
             // rename part file to final
             tfs::rename(&tmp_name, &final_name).await?;
 
-            let msg = format!("Completed {}", final_name);
+            let msg = format!("Completed {}", file_link.file_name);
             Ok(msg)
         }
     }
