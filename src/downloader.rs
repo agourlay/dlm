@@ -18,7 +18,7 @@ pub async fn download_link(
     let file_link = FileLink::new(raw_link.clone())?;
     let final_name = &file_link.full_path(output_dir);
     if Path::new(final_name).exists() {
-        let msg = format!("Skipping {} because it is already completed", file_link.file_name);
+        let msg = format!("Skipping {} because the file is already completed", file_link.file_name);
         Ok(msg)
     } else {
         let url = file_link.url.as_str();

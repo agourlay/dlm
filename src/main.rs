@@ -38,6 +38,7 @@ async fn main() -> Result<(), DlmError> {
             async move {
                 match link_res {
                     Err(e) => println!("Error with links iterator {}", e),
+                    Ok(link) if link.trim().is_empty() => println!("Skipping empty line"),
                     Ok(link) => {
                         let pb = rx_ref.recv().expect("channel should not fail");
                         let processed = FutureRetry::new(

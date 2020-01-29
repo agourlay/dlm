@@ -1,6 +1,7 @@
 use crate::dlm_error::DlmError;
 
 use std::str;
+use crate::dlm_error::DlmError::Other;
 
 pub struct FileLink {
     pub url: String,
@@ -11,28 +12,32 @@ pub struct FileLink {
 
 impl FileLink {
     pub fn new(url: String) -> Result<FileLink, DlmError> {
-        let extension: String = {
-            let tmp: String = url.chars().rev().take_while(|c| c != &'.').collect();
-            tmp.chars().rev().collect()
-        };
+        if url.trim().is_empty(){
+            Err(Other {message: "FileLink cannot be built from an empty URL".to_string()})
+        } else {
+            let extension: String = {
+                let tmp: String = url.chars().rev().take_while(|c| c != &'.').collect();
+                tmp.chars().rev().collect()
+            };
 
-        let file_name_no_extension: String = {
-            let tmp: String = url_decode(url.as_str())?
-                .chars()
-                .rev()
-                .skip(extension.len())
-                .take_while(|c| c != &'/')
-                .collect();
-            tmp.chars().rev().collect()
-        };
-        let file_name = format!("{}{}", file_name_no_extension, extension);
-        let file_link = FileLink {
-            url,
-            file_name_no_extension,
-            extension,
-            file_name,
-        };
-        Ok(file_link)
+            let file_name_no_extension: String = {
+                let tmp: String = url_decode(url.as_str())?
+                    .chars()
+                    .rev()
+                    .skip(extension.len())
+                    .take_while(|c| c != &'/')
+                    .collect();
+                tmp.chars().rev().collect()
+            };
+            let file_name = format!("{}{}", file_name_no_extension, extension);
+            let file_link = FileLink {
+                url,
+                file_name_no_extension,
+                extension,
+                file_name,
+            };
+            Ok(file_link)
+        }
     }
 
     pub fn full_path(&self, output_dir: &str) -> String {

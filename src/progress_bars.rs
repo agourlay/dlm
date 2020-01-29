@@ -21,7 +21,6 @@ pub fn init_progress_bars(
         let pb = mp.add(ProgressBar::new(0));
         pb.set_style(style.clone());
         pb.set_message(message_progress_bar(PENDING).as_str());
-        pb.enable_steady_tick(500); // no need for realtime progress
         tx.send(pb).expect("channel should not fail");
     }
 
