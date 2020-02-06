@@ -37,7 +37,7 @@ pub fn message_progress_bar(s: &str) -> String {
     let count = s.chars().count();
 
     match count.cmp(&max) {
-        Ordering::Greater => s.clone().chars().take(max).collect(),
+        Ordering::Greater => s.chars().take(max).collect(),
         Ordering::Equal => s.to_string(),
         Ordering::Less => format!("{}{}", s, " ".repeat(max - count)),
     }
