@@ -22,7 +22,7 @@ impl std::convert::From<reqwest::Error> for DlmError {
             DlmError::ConnectionClosed
         } else {
             DlmError::Other {
-                message: e.to_string(),
+                message: e_string,
             }
         }
     }

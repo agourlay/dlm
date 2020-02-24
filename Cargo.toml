@@ -5,9 +5,9 @@ authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-futures = "0.3.3"
-futures-util = "0.3.3"
-reqwest = "0.10.1"
+futures = "0.3.4"
+futures-util = "0.3.4"
+reqwest = "0.10.2"
 tokio = { version = "0.2.11", features = ["full"] }
 futures-retry = "0.4.0"
 clap = "2.33.0"

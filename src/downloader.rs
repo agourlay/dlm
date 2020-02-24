@@ -64,19 +64,22 @@ pub async fn download_link(
             }
 
             // initiate file download
-            let mut res = request.send().await?;
-            // incremental save chunk by chunk into part file
-            let chunk_timeout = Duration::from_secs(60);
-            while let Some(chunk) = timeout(chunk_timeout, res.chunk()).await?? {
-                file.write_all(&chunk).await?;
-                pb.inc(chunk.len() as u64);
+            let mut dl_response = request.send().await?;
+            if !dl_response.status().is_success() {
+                let message = format!("{} {}", url, dl_response.status());
+                Err(DlmError::ResponseStatusNotSuccess { message })
+            } else {
+                // incremental save chunk by chunk into part file
+                let chunk_timeout = Duration::from_secs(60);
+                while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
+                    file.write_all(&chunk).await?;
+                    pb.inc(chunk.len() as u64);
+                }
+                // rename part file to final
+                tfs::rename(&tmp_name, &final_name).await?;
+                let msg = format!("Completed {}", file_link.file_name);
+                Ok(msg)
             }
-
-            // rename part file to final
-            tfs::rename(&tmp_name, &final_name).await?;
-
-            let msg = format!("Completed {}", file_link.file_name);
-            Ok(msg)
         }
     }
 }
