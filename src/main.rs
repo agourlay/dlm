@@ -46,8 +46,8 @@ async fn main() -> Result<(), DlmError> {
                             retry_on_connection_drop,
                         );
                         match processed.await {
-                            Ok(info) => pb.println(info),
-                            Err(e) => pb.println(format!("Error: {:#?}", e)),
+                            Ok((info, _)) => pb.println(info),
+                            Err((e, _)) => pb.println(format!("Error: {:#?}", e)),
                         }
                         tx_ref.send(pb).expect("channel should not fail");
                     }
