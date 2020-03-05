@@ -23,11 +23,14 @@ pub async fn download_link(
     } else {
         let url = file_link.url.as_str();
         let head_result = client.head(url).send().await?;
-        // get remote file size and range capabilities
-        let content_length = head_result.content_length();
+        // FIX ME https://github.com/seanmonstar/reqwest/issues/843
+        let content_length = head_result.headers()
+            .get("content-length")
+            .and_then(|ct_len| ct_len.to_str().ok())
+            .and_then(|ct_len| ct_len.parse().ok());
         let accept_ranges = head_result
             .headers()
-            .get("Accept-Ranges")
+            .get("accept-ranges")
             .and_then(|ct_len| ct_len.to_str().ok());
 
         if !head_result.status().is_success() {
