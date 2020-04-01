@@ -6,7 +6,7 @@ pub enum DlmError {
     ResponseStatusNotSuccess { message: String },
     UrlDecodeError { message: String },
     StdIoError { e: std::io::Error },
-    Other { message: String }
+    Other { message: String },
 }
 
 const CONNECTION_CLOSED: &str = "connection closed before message completed";
@@ -16,14 +16,12 @@ impl std::convert::From<reqwest::Error> for DlmError {
     fn from(e: reqwest::Error) -> Self {
         //TODO use Reqwest's types instead of guessing from strings https://github.com/seanmonstar/reqwest/issues/757
         let e_string = e.to_string();
-        if e_string.contains(BODY_ERROR)  {
+        if e_string.contains(BODY_ERROR) {
             DlmError::ResponseBodyError
         } else if e_string.contains(CONNECTION_CLOSED) {
             DlmError::ConnectionClosed
         } else {
-            DlmError::Other {
-                message: e_string,
-            }
+            DlmError::Other { message: e_string }
         }
     }
 }

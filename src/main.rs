@@ -34,23 +34,21 @@ async fn main() -> Result<(), DlmError> {
 
     file_reader
         .lines()
-        .for_each_concurrent(max_concurrent_downloads, |link_res| {
-            async move {
-                match link_res {
-                    Err(e) => println!("Error with links iterator {}", e),
-                    Ok(link) if link.trim().is_empty() => println!("Skipping empty line"),
-                    Ok(link) => {
-                        let pb = rx_ref.recv().expect("channel should not fail");
-                        let processed = FutureRetry::new(
-                            || download_link(&link, c_ref, od_ref, &pb),
-                            retry_on_connection_drop,
-                        );
-                        match processed.await {
-                            Ok((info, _)) => pb.println(info),
-                            Err((e, _)) => pb.println(format!("Error: {:#?}", e)),
-                        }
-                        tx_ref.send(pb).expect("channel should not fail");
+        .for_each_concurrent(max_concurrent_downloads, |link_res| async move {
+            match link_res {
+                Err(e) => println!("Error with links iterator {}", e),
+                Ok(link) if link.trim().is_empty() => println!("Skipping empty line"),
+                Ok(link) => {
+                    let pb = rx_ref.recv().expect("channel should not fail");
+                    let processed = FutureRetry::new(
+                        || download_link(&link, c_ref, od_ref, &pb),
+                        retry_on_connection_drop,
+                    );
+                    match processed.await {
+                        Ok((info, _)) => pb.println(info),
+                        Err((e, _)) => pb.println(format!("Error: {:#?}", e)),
                     }
+                    tx_ref.send(pb).expect("channel should not fail");
                 }
             }
         })
@@ -60,7 +58,9 @@ async fn main() -> Result<(), DlmError> {
 
 fn retry_on_connection_drop(e: DlmError) -> RetryPolicy<DlmError> {
     match e {
-        DlmError::ConnectionClosed | DlmError::ResponseBodyError | DlmError::DeadLineElapsedTimeout => RetryPolicy::WaitRetry(Duration::from_secs(10)),
-        _  => RetryPolicy::ForwardError(e)
+        DlmError::ConnectionClosed
+        | DlmError::ResponseBodyError
+        | DlmError::DeadLineElapsedTimeout => RetryPolicy::WaitRetry(Duration::from_secs(10)),
+        _ => RetryPolicy::ForwardError(e),
     }
 }

@@ -1,7 +1,7 @@
 use crate::dlm_error::DlmError;
 
-use std::str;
 use crate::dlm_error::DlmError::Other;
+use std::str;
 
 pub struct FileLink {
     pub url: String,
@@ -12,8 +12,10 @@ pub struct FileLink {
 
 impl FileLink {
     pub fn new(url: String) -> Result<FileLink, DlmError> {
-        if url.trim().is_empty(){
-            Err(Other {message: "FileLink cannot be built from an empty URL".to_string()})
+        if url.trim().is_empty() {
+            Err(Other {
+                message: "FileLink cannot be built from an empty URL".to_string(),
+            })
         } else {
             let extension: String = {
                 let tmp: String = url.chars().rev().take_while(|c| c != &'.').collect();
@@ -72,4 +74,43 @@ fn url_decode(data: &str) -> Result<String, DlmError> {
             message: e.to_string(),
         })
     })
+}
+
+#[cfg(test)]
+mod file_link_tests {
+    use crate::dlm_error::DlmError;
+    use crate::file_link::*;
+
+    #[test]
+    fn no_empty_string() {
+        match FileLink::new("".to_string()) {
+            Err(DlmError::Other { message }) => assert_eq!(
+                message,
+                "FileLink cannot be built from an empty URL".to_string()
+            ),
+            _ => assert_eq!(true, false),
+        }
+    }
+
+    #[test]
+    fn happy_case() {
+        let url = "http://www.google.com/area51.txt".to_string();
+        match FileLink::new(url.clone()) {
+            Ok(fl) => {
+                assert_eq!(fl.url, url);
+                assert_eq!(fl.file_name, "area51.txt".to_string());
+                assert_eq!(fl.extension, "txt".to_string());
+                assert_eq!(fl.file_name_no_extension, "area51.".to_string());
+            },
+            _ => assert_eq!(true, false),
+        }
+    }
+
+    #[test]
+    fn full_path() {
+        let url = "http://www.google.com/area51.txt".to_string();
+        let fl = FileLink::new(url).unwrap();
+        let full_path = fl.full_path("/secret-folder");
+        assert_eq!(full_path, "/secret-folder/area51.txt".to_string())
+    }
 }

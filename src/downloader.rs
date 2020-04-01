@@ -18,13 +18,17 @@ pub async fn download_link(
     let file_link = FileLink::new(raw_link.clone())?;
     let final_name = &file_link.full_path(output_dir);
     if Path::new(final_name).exists() {
-        let msg = format!("Skipping {} because the file is already completed", file_link.file_name);
+        let msg = format!(
+            "Skipping {} because the file is already completed",
+            file_link.file_name
+        );
         Ok(msg)
     } else {
         let url = file_link.url.as_str();
         let head_result = client.head(url).send().await?;
         // FIX ME https://github.com/seanmonstar/reqwest/issues/843
-        let content_length = head_result.headers()
+        let content_length = head_result
+            .headers()
             .get("content-length")
             .and_then(|ct_len| ct_len.to_str().ok())
             .and_then(|ct_len| ct_len.parse().ok());
