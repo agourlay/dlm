@@ -108,7 +108,7 @@ async fn compute_query_range(
             }
             _ => {
                 let log = format!(
-                    "Found part file for {} with size {} but it will be overridden because the server does not support querying a range of bytes",
+                    "Found part file {} with size {} but it will be overridden because the server does not support resuming the download (range bytes)",
                     tmp_name, tmp_size
                 );
                 pb.println(log);
@@ -116,6 +116,13 @@ async fn compute_query_range(
             }
         }
     } else {
+        if accept_ranges.is_none() {
+            let log = format!(
+                "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
+                tmp_name
+            );
+            pb.println(log);
+        };
         Ok(None)
     }
 }

@@ -101,7 +101,7 @@ mod file_link_tests {
                 assert_eq!(fl.file_name, "area51.txt".to_string());
                 assert_eq!(fl.extension, "txt".to_string());
                 assert_eq!(fl.file_name_no_extension, "area51.".to_string());
-            },
+            }
             _ => assert_eq!(true, false),
         }
     }
