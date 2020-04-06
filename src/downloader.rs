@@ -1,3 +1,4 @@
+use hyper::HeaderMap;
 use indicatif::ProgressBar;
 use reqwest::Client;
 use std::path::Path;
@@ -26,21 +27,12 @@ pub async fn download_link(
     } else {
         let url = file_link.url.as_str();
         let head_result = client.head(url).send().await?;
-        // FIX ME https://github.com/seanmonstar/reqwest/issues/843
-        let content_length = head_result
-            .headers()
-            .get("content-length")
-            .and_then(|ct_len| ct_len.to_str().ok())
-            .and_then(|ct_len| ct_len.parse().ok());
-        let accept_ranges = head_result
-            .headers()
-            .get("accept-ranges")
-            .and_then(|ct_len| ct_len.to_str().ok());
-
         if !head_result.status().is_success() {
             let message = format!("{} {}", url, head_result.status());
             Err(DlmError::ResponseStatusNotSuccess { message })
         } else {
+            let (content_length, accept_ranges) =
+                try_hard_to_extract_headers(head_result.headers(), url, client).await?;
             // setup progress bar for the file
             pb.reset();
             pb.set_message(message_progress_bar(&file_link.file_name).as_str());
@@ -91,17 +83,49 @@ pub async fn download_link(
     }
 }
 
+async fn try_hard_to_extract_headers(
+    head_headers: &HeaderMap,
+    url: &str,
+    client: &Client,
+) -> Result<(Option<u64>, Option<String>), DlmError> {
+    let tuple = match content_length(head_headers) {
+        Some(0) => {
+            // if "content-length": "0" then it is likely the server does not support HEAD, let's try harder with a GET
+            let get_result = client.get(url).send().await?;
+            let get_headers = get_result.headers();
+            (content_length(get_headers), accept_ranges(get_headers))
+        }
+        ct_option @ Some(_) => (ct_option, accept_ranges(head_headers)),
+        _ => (None, None),
+    };
+    Ok(tuple)
+}
+
+fn content_length(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get("content-length")
+        .and_then(|ct_len| ct_len.to_str().ok())
+        .and_then(|ct_len| ct_len.parse().ok())
+}
+
+fn accept_ranges(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("accept-ranges")
+        .and_then(|ct_len| ct_len.to_str().ok())
+        .map(|v| v.to_string())
+}
+
 async fn compute_query_range(
     pb: &ProgressBar,
     content_length: Option<u64>,
-    accept_ranges: Option<&str>,
+    accept_ranges: Option<String>,
     tmp_name: &str,
 ) -> Result<Option<String>, DlmError> {
     if Path::new(&tmp_name).exists() {
         // get existing file size
         let tmp_size = tfs::File::open(&tmp_name).await?.metadata().await?.len();
         match (accept_ranges, content_length) {
-            (Some("bytes"), Some(cl)) => {
+            (Some(range), Some(cl)) if range == "bytes" => {
                 pb.set_position(tmp_size);
                 let range_msg = format!("bytes={}-{}", tmp_size, cl);
                 Ok(Some(range_msg))
