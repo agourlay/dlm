@@ -14,7 +14,7 @@ use tokio::prelude::*;
 use crate::args::get_args;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
-use crate::progress_bars::init_progress_bars;
+use crate::progress_bars::{init_progress_bars, logger};
 
 #[tokio::main]
 async fn main() -> Result<(), DlmError> {
@@ -35,22 +35,23 @@ async fn main() -> Result<(), DlmError> {
     file_reader
         .lines()
         .for_each_concurrent(max_concurrent_downloads, |link_res| async move {
-            match link_res {
-                Err(e) => println!("Error with links iterator {}", e),
-                Ok(link) if link.trim().is_empty() => println!("Skipping empty line"),
+            let pb = rx_ref.recv().expect("claiming channel should not fail");
+            let message = match link_res {
+                Err(e) => format!("Error with links iterator {}", e),
+                Ok(link) if link.trim().is_empty() => "Skipping empty line".to_string(),
                 Ok(link) => {
-                    let pb = rx_ref.recv().expect("channel should not fail");
                     let processed = FutureRetry::new(
                         || download_link(&link, c_ref, od_ref, &pb),
                         retry_on_connection_drop,
                     );
                     match processed.await {
-                        Ok((info, _)) => pb.println(info),
-                        Err((e, _)) => pb.println(format!("Error: {:#?}", e)),
+                        Ok((info, _)) => info,
+                        Err((e, _)) => format!("Error: {:?}", e),
                     }
-                    tx_ref.send(pb).expect("channel should not fail");
                 }
-            }
+            };
+            logger(&pb, message);
+            tx_ref.send(pb).expect("releasing channel should not fail");
         })
         .await;
     Ok(())

@@ -8,7 +8,7 @@ use tokio::time::{timeout, Duration};
 
 use crate::dlm_error::DlmError;
 use crate::file_link::FileLink;
-use crate::progress_bars::message_progress_bar;
+use crate::progress_bars::{logger, message_progress_bar};
 
 pub async fn download_link(
     raw_link: &String,
@@ -135,7 +135,7 @@ async fn compute_query_range(
                     "Found part file {} with size {} but it will be overridden because the server does not support resuming the download (range bytes)",
                     tmp_name, tmp_size
                 );
-                pb.println(log);
+                logger(&pb, log);
                 Ok(None)
             }
         }
@@ -145,7 +145,7 @@ async fn compute_query_range(
                 "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
                 tmp_name
             );
-            pb.println(log);
+            logger(&pb, log);
         };
         Ok(None)
     }

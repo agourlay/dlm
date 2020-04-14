@@ -1,3 +1,4 @@
+use chrono::Utc;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::Ordering;
 use std::sync::mpsc;
@@ -41,4 +42,8 @@ pub fn message_progress_bar(s: &str) -> String {
         Ordering::Equal => s.to_string(),
         Ordering::Less => format!("{}{}", s, " ".repeat(max - count)),
     }
+}
+
+pub fn logger(pb: &ProgressBar, msg: String) {
+    pb.println(format!("[{}] {}", Utc::now().naive_local(), msg));
 }
