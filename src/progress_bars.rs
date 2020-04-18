@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::Ordering;
 use std::sync::mpsc;
@@ -45,5 +45,5 @@ pub fn message_progress_bar(s: &str) -> String {
 }
 
 pub fn logger(pb: &ProgressBar, msg: String) {
-    pb.println(format!("[{}] {}", Utc::now().naive_local(), msg));
+    pb.println(format!("[{}] {}", Local::now().naive_local(), msg));
 }

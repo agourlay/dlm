@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 futures = "0.3.4"
 futures-util = "0.3.4"
-hyper = "0.13.4"
+hyper = "0.13.5"
 reqwest = "0.10.4"
 tokio = { version = "0.2.18", features = ["full"] }
 futures-retry = "0.5.0"
