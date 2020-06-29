@@ -23,7 +23,7 @@ async fn main() -> Result<(), DlmError> {
     let file_reader = tokio::io::BufReader::new(file);
     let client = Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .max_idle_per_host(0)
+        .pool_max_idle_per_host(0)
         .build()?;
     let od_ref = &output_dir;
     let c_ref = &client;
