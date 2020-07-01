@@ -79,7 +79,11 @@ pub async fn download_link(
                 let final_file_size = file.metadata().await?.len();
                 // rename part file to final
                 tfs::rename(&tmp_name, &final_name).await?;
-                let msg = format!("Completed {} [{}]", file_link.file_name, pretty_file_size(final_file_size));
+                let msg = format!(
+                    "Completed {} [{}]",
+                    file_link.file_name,
+                    pretty_file_size(final_file_size)
+                );
                 Ok(msg)
             }
         }
