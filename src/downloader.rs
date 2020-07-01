@@ -74,13 +74,32 @@ pub async fn download_link(
                     file.write_all(&chunk).await?;
                     pb.inc(chunk.len() as u64);
                 }
+                let final_file_size = file.metadata().await?.len();
                 // rename part file to final
                 tfs::rename(&tmp_name, &final_name).await?;
-                let msg = format!("Completed {}", file_link.file_name);
+                let msg = format!("Completed {} [{}]", file_link.file_name, pretty_file_size(final_file_size));
                 Ok(msg)
             }
         }
     }
+}
+
+const KILOBYTE: f64 = 1000.0;
+const MEGABYTE: f64 = 1000.0 * KILOBYTE;
+const GIGABYTE: f64 = 1000.0 * MEGABYTE;
+
+fn pretty_file_size(len: u64) -> String {
+    let float_len = len as f64;
+    let (unit, value) = if float_len > GIGABYTE {
+        ("GB", float_len / GIGABYTE)
+    } else if float_len > MEGABYTE {
+        ("MB", float_len / MEGABYTE)
+    } else if float_len > KILOBYTE {
+        ("KB", float_len / KILOBYTE)
+    } else {
+        ("bytes", float_len)
+    };
+    format!("{:.2}{}", value, unit)
 }
 
 async fn try_hard_to_extract_headers(
@@ -148,5 +167,28 @@ async fn compute_query_range(
             logger(&pb, log);
         };
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod downloader_tests {
+    use crate::downloader::*;
+
+    #[test]
+    fn pretty_file_size_gb() {
+        let size: u64 = 1_200_000_000;
+        assert_eq!(pretty_file_size(size), "1.20GB");
+    }
+
+    #[test]
+    fn pretty_file_size_mb() {
+        let size: u64 = 1_200_000;
+        assert_eq!(pretty_file_size(size), "1.20MB");
+    }
+
+    #[test]
+    fn pretty_file_size_kb() {
+        let size: u64 = 1_200;
+        assert_eq!(pretty_file_size(size), "1.20KB");
     }
 }
