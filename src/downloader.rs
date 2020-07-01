@@ -19,9 +19,11 @@ pub async fn download_link(
     let file_link = FileLink::new(raw_link.clone())?;
     let final_name = &file_link.full_path(output_dir);
     if Path::new(final_name).exists() {
+        let final_file_size = tfs::File::open(&final_name).await?.metadata().await?.len();
         let msg = format!(
-            "Skipping {} because the file is already completed",
-            file_link.file_name
+            "Skipping {} because the file is already completed [{}]",
+            file_link.file_name,
+            pretty_file_size(final_file_size)
         );
         Ok(msg)
     } else {
