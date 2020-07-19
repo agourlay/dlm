@@ -7,10 +7,10 @@ edition = "2018"
 [dependencies]
 futures = "0.3.5"
 futures-util = "0.3.5"
-hyper = "0.13.6"
+hyper = "0.13.7"
 reqwest = "0.10.6"
 tokio = { version = "0.2.21", features = ["full"] }
 futures-retry = "0.5.0"
-chrono = "0.4.11"
+chrono = "0.4.13"
 clap = "2.33.1"
 indicatif = "0.15.0"
