@@ -4,17 +4,17 @@ mod downloader;
 mod file_link;
 mod progress_bars;
 
+use crate::args::get_args;
+use crate::dlm_error::DlmError;
+use crate::downloader::download_link;
+use crate::progress_bars::{init_progress_bars, logger};
 use futures_retry::{FutureRetry, RetryPolicy};
 use futures_util::stream::StreamExt;
 use reqwest::Client;
 use std::time::Duration;
 use tokio::fs as tfs;
-use tokio::prelude::*;
-
-use crate::args::get_args;
-use crate::dlm_error::DlmError;
-use crate::downloader::download_link;
-use crate::progress_bars::{init_progress_bars, logger};
+use tokio::io::AsyncBufReadExt;
+use tokio_stream::wrappers::LinesStream;
 
 #[tokio::main]
 async fn main() -> Result<(), DlmError> {
@@ -32,8 +32,8 @@ async fn main() -> Result<(), DlmError> {
     let rx_ref = &rx;
     let tx_ref = &tx;
 
-    file_reader
-        .lines()
+    let stream = LinesStream::new(file_reader.lines());
+    stream
         .for_each_concurrent(max_concurrent_downloads, |link_res| async move {
             let pb = rx_ref.recv().expect("claiming channel should not fail");
             let message = match link_res {

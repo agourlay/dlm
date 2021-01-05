@@ -3,7 +3,7 @@ use indicatif::ProgressBar;
 use reqwest::Client;
 use std::path::Path;
 use tokio::fs as tfs;
-use tokio::prelude::*;
+use tokio::io::AsyncWriteExt;
 use tokio::time::{timeout, Duration};
 
 use crate::dlm_error::DlmError;

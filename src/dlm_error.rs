@@ -1,3 +1,5 @@
+use tokio::time::error::Elapsed;
+
 #[derive(Debug)]
 pub enum DlmError {
     ConnectionClosed,
@@ -32,8 +34,8 @@ impl std::convert::From<std::io::Error> for DlmError {
     }
 }
 
-impl std::convert::From<tokio::time::Elapsed> for DlmError {
-    fn from(_: tokio::time::Elapsed) -> Self {
+impl std::convert::From<Elapsed> for DlmError {
+    fn from(_: Elapsed) -> Self {
         DlmError::DeadLineElapsedTimeout
     }
 }
