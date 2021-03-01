@@ -12,10 +12,17 @@ pub struct FileLink {
 
 impl FileLink {
     pub fn new(url: String) -> Result<FileLink, DlmError> {
-        if url.trim().is_empty() {
+        let trimmed = url.trim();
+        if trimmed.is_empty() {
             Err(Other {
                 message: "FileLink cannot be built from an empty URL".to_string(),
             })
+        } else if trimmed.chars().last() == Some('/') {
+            let message = format!(
+                "FileLink cannot be built with an invalid extension '{}'",
+                trimmed
+            );
+            Err(Other { message })
         } else {
             let extension: String = {
                 let tmp: String = url.chars().rev().take_while(|c| c != &'.').collect();
@@ -110,5 +117,17 @@ mod file_link_tests {
         let fl = FileLink::new(url).unwrap();
         let full_path = fl.full_path("/secret-folder");
         assert_eq!(full_path, "/secret-folder/area51.txt".to_string())
+    }
+
+    #[test]
+    fn no_extension() {
+        let url = "http://www.google.com/area51/".to_string();
+        match FileLink::new(url.clone()) {
+            Err(DlmError::Other { message }) => assert_eq!(
+                message,
+                "FileLink cannot be built with an invalid extension 'http://www.google.com/area51/'".to_string()
+            ),
+            _ => assert_eq!(true, false),
+        }
     }
 }
