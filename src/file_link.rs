@@ -17,7 +17,7 @@ impl FileLink {
             Err(Other {
                 message: "FileLink cannot be built from an empty URL".to_string(),
             })
-        } else if trimmed.chars().last() == Some('/') {
+        } else if trimmed.ends_with('/') {
             let message = format!(
                 "FileLink cannot be built with an invalid extension '{}'",
                 trimmed
