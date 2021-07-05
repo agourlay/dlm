@@ -21,7 +21,7 @@ pub fn init_progress_bars(
     for _ in 0..max_concurrent_downloads {
         let pb = mp.add(ProgressBar::new(0));
         pb.set_style(style.clone());
-        pb.set_message(message_progress_bar(PENDING).as_str());
+        pb.set_message(message_progress_bar(PENDING));
         tx.send(pb).expect("channel should not fail");
     }
 

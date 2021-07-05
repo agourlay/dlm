@@ -37,7 +37,7 @@ pub async fn download_link(
                 try_hard_to_extract_headers(head_result.headers(), url, client).await?;
             // setup progress bar for the file
             pb.reset();
-            pb.set_message(message_progress_bar(&file_link.file_name).as_str());
+            pb.set_message(message_progress_bar(&file_link.file_name));
             if let Some(total_size) = content_length {
                 pb.set_length(total_size);
             };
