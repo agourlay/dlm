@@ -1,7 +1,5 @@
 # dlm
 
-[![Build Status](https://travis-ci.org/agourlay/dlm.svg?branch=master)](https://travis-ci.org/agourlay/dlm)
-
 A minimal HTTP download manager that works just fine.
 
 ## features

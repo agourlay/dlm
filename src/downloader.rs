@@ -11,12 +11,12 @@ use crate::file_link::FileLink;
 use crate::progress_bars::{logger, message_progress_bar};
 
 pub async fn download_link(
-    raw_link: &String,
+    raw_link: &str,
     client: &Client,
     output_dir: &str,
     pb: &ProgressBar,
 ) -> Result<String, DlmError> {
-    let file_link = FileLink::new(raw_link.clone())?;
+    let file_link = FileLink::new(raw_link.to_string())?;
     let final_name = &file_link.full_path(output_dir);
     if Path::new(final_name).exists() {
         let final_file_size = tfs::File::open(&final_name).await?.metadata().await?.len();
@@ -160,7 +160,7 @@ async fn compute_query_range(
                     "Found part file {} with size {} but it will be overridden because the server does not support resuming the download (range bytes)",
                     tmp_name, tmp_size
                 );
-                logger(&pb, log);
+                logger(pb, log);
                 Ok(None)
             }
         }
@@ -170,7 +170,7 @@ async fn compute_query_range(
                 "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
                 tmp_name
             );
-            logger(&pb, log);
+            logger(pb, log);
         };
         Ok(None)
     }
