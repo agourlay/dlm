@@ -7,7 +7,7 @@ mod progress_bars;
 use crate::args::get_args;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
-use crate::progress_bars::{init_progress_bars, logger};
+use crate::progress_bars::{init_progress_bars, finish_progress_bars, logger};
 use futures_retry::{FutureRetry, RetryPolicy};
 use futures_util::stream::StreamExt;
 use reqwest::Client;
@@ -54,6 +54,8 @@ async fn main() -> Result<(), DlmError> {
             tx_ref.send(pb).expect("releasing channel should not fail");
         })
         .await;
+
+    finish_progress_bars(max_concurrent_downloads, rx);
     Ok(())
 }
 

@@ -33,6 +33,13 @@ pub fn init_progress_bars(
     (tx, rx)
 }
 
+pub fn finish_progress_bars(max_concurrent_downloads: usize, rx: Receiver<ProgressBar>) {
+    for _ in 0..max_concurrent_downloads {
+        let pb = rx.recv().expect("claiming channel should not fail");
+        pb.finish();
+    }
+}
+
 pub fn message_progress_bar(s: &str) -> String {
     let max = 35; // arbitrary limit
     let count = s.chars().count();
