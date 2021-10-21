@@ -10,7 +10,10 @@ pub struct FileLink {
     pub file_name: String,
 }
 
+const NO_EXT: &str = ".NO_EXT";
+
 impl FileLink {
+
     pub fn new(url: String) -> Result<FileLink, DlmError> {
         let trimmed = url.trim();
         if trimmed.is_empty() {
@@ -24,20 +27,26 @@ impl FileLink {
             );
             Err(Other { message })
         } else {
-            let extension: String = {
-                let tmp: String = url.chars().rev().take_while(|c| c != &'.').collect();
-                tmp.chars().rev().collect()
-            };
+            let url_decoded = url_decode(url.as_str())?;
+            let last_segment_rev: String = url_decoded.chars().rev().take_while(|c| c != &'/').collect();
+            let (extension, file_name_no_extension) = if last_segment_rev.contains('.') {
+                let ext_rev: String = last_segment_rev.chars().take_while(|c| c != &'.').collect();
+                let ext: String = ext_rev.chars().rev().collect();
 
-            let file_name_no_extension: String = {
-                let tmp: String = url_decode(url.as_str())?
+                let tmp: String = url_decoded
                     .chars()
                     .rev()
-                    .skip(extension.len())
+                    .skip(ext.len())
                     .take_while(|c| c != &'/')
                     .collect();
-                tmp.chars().rev().collect()
+                let file_name_no_extension: String = tmp.chars().rev().collect();
+                (ext, file_name_no_extension)
+            } else {
+                let file_name_no_extension: String = last_segment_rev.chars().rev().collect();
+                // no extension detected - give it a fake one
+                (NO_EXT.to_string(), file_name_no_extension)
             };
+
             let file_name = format!("{}{}", file_name_no_extension, extension);
             let file_link = FileLink {
                 url,
@@ -50,10 +59,7 @@ impl FileLink {
     }
 
     pub fn full_path(&self, output_dir: &str) -> String {
-        format!(
-            "{}/{}{}",
-            output_dir, self.file_name_no_extension, self.extension
-        )
+        format!("{}/{}", output_dir, self.file_name)
     }
 }
 
@@ -120,7 +126,7 @@ mod file_link_tests {
     }
 
     #[test]
-    fn no_extension() {
+    fn trailing_slash() {
         let url = "http://www.google.com/area51/".to_string();
         match FileLink::new(url.clone()) {
             Err(DlmError::Other { message }) => assert_eq!(
@@ -129,5 +135,13 @@ mod file_link_tests {
             ),
             _ => assert_eq!(true, false),
         }
+    }
+
+    #[test]
+    fn no_extension() {
+        let url = "http://www.google.com/area51".to_string();
+        let fl = FileLink::new(url).unwrap();
+        let full_path = fl.full_path("/secret-folder");
+        assert_eq!(full_path, "/secret-folder/area51.NO_EXT".to_string())
     }
 }
