@@ -1,4 +1,5 @@
 # dlm
+[![Build](https://github.com/agourlay/dlm/actions/workflows/ci.yml/badge.svg)](https://github.com/agourlay/dlm/actions/workflows/ci.yml)
 
 A minimal HTTP download manager that works just fine.
 
@@ -28,11 +29,3 @@ OPTIONS:
     -M, --maxConcurrentDownloads <maxConcurrentDownloads>    used to limit //
     -o, --outputDir <outputDir>                              output directory for downloads
 ```
-
-## Installation from source
-
-Install [Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) and then run the following command within the `dlm` directory.
-
-`cargo install --path=.`
-
-Make sure to have `$HOME/.cargo/bin` in your path.
