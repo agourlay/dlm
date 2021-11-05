@@ -7,7 +7,7 @@ A minimal HTTP download manager that works just fine.
 
 - read URLs from a text file (one entry per line)
 - control maximum number of concurrent downloads
-- resume interrupted downloads if possible
+- resume interrupted downloads if possible (using HTTP range)
 - automatically retry re-establishing download in case of timeout or hanging connection
 - multi progress bars (made with [indicatif](https://github.com/mitsuhiko/indicatif))
 
