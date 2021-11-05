@@ -26,6 +26,12 @@ FLAGS:
 
 OPTIONS:
     -i, --inputFile <inputFile>                              input file with links
-    -M, --maxConcurrentDownloads <maxConcurrentDownloads>    used to limit //
+    -M, --maxConcurrentDownloads <maxConcurrentDownloads>    used to limit the number of downloads in flight
     -o, --outputDir <outputDir>                              output directory for downloads
+```
+
+Example:
+
+```
+./dlm --inputFile ~/dlm/links.txt --outputDir ~/dlm/output --maxConcurrentDownloads 2
 ```
