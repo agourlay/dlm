@@ -9,18 +9,24 @@ const PENDING: &str = "pending";
 
 pub fn init_progress_bars(
     max_concurrent_downloads: usize,
-) -> (Sender<ProgressBar>, Receiver<ProgressBar>) {
+) -> (ProgressBar, Sender<ProgressBar>, Receiver<ProgressBar>) {
     let mp = MultiProgress::new();
-    let style = ProgressStyle::default_bar()
-        .template("{msg} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")
-        .progress_chars("#>-");
+
+    // main progress bar
+    let main_style = ProgressStyle::default_bar().template("{bar:133} {pos}/{len}");
+    let main_pb = mp.add(ProgressBar::new(0));
+    main_pb.set_style(main_style);
 
     let (tx, rx): (Sender<ProgressBar>, Receiver<ProgressBar>) = mpsc::channel();
+
+    let dl_style = ProgressStyle::default_bar()
+        .template("{msg} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")
+        .progress_chars("#>-");
 
     // `max_concurrent_downloads` progress bars are shared between the threads at anytime
     for _ in 0..max_concurrent_downloads {
         let pb = mp.add(ProgressBar::new(0));
-        pb.set_style(style.clone());
+        pb.set_style(dl_style.clone());
         pb.set_message(message_progress_bar(PENDING));
         tx.send(pb).expect("channel should not fail");
     }
@@ -30,14 +36,15 @@ pub fn init_progress_bars(
         mp.join_and_clear().unwrap();
     });
 
-    (tx, rx)
+    (main_pb, tx, rx)
 }
 
-pub fn finish_progress_bars(max_concurrent_downloads: usize, rx: Receiver<ProgressBar>) {
+pub fn finish_progress_bars(max_concurrent_downloads: usize, main_pb: &ProgressBar, rx: Receiver<ProgressBar>) {
     for _ in 0..max_concurrent_downloads {
         let pb = rx.recv().expect("claiming channel should not fail");
         pb.finish();
     }
+    main_pb.finish();
 }
 
 pub fn message_progress_bar(s: &str) -> String {

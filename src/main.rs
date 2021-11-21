@@ -19,8 +19,10 @@ use tokio_stream::wrappers::LinesStream;
 #[tokio::main]
 async fn main() -> Result<(), DlmError> {
     let (input_file, max_concurrent_downloads, output_dir) = get_args();
+    let nb_of_lines = count_lines(&input_file).await?;
     let file = tfs::File::open(input_file).await?;
     let file_reader = tokio::io::BufReader::new(file);
+
     let client = Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(0)
@@ -28,7 +30,9 @@ async fn main() -> Result<(), DlmError> {
     let od_ref = &output_dir;
     let c_ref = &client;
 
-    let (tx, rx) = init_progress_bars(max_concurrent_downloads);
+    let (main_pb, tx, rx) = init_progress_bars(max_concurrent_downloads);
+    main_pb.set_length(nb_of_lines as u64);
+    let main_pb_ref = &main_pb;
     let rx_ref = &rx;
     let tx_ref = &tx;
 
@@ -52,11 +56,21 @@ async fn main() -> Result<(), DlmError> {
             };
             logger(&pb, message);
             tx_ref.send(pb).expect("releasing channel should not fail");
+            main_pb_ref.inc(1);
         })
         .await;
 
-    finish_progress_bars(max_concurrent_downloads, rx);
+    finish_progress_bars(max_concurrent_downloads, main_pb_ref, rx);
     Ok(())
+}
+
+// Can we do this without loading the whole file in memory?
+async fn count_lines(input_file: &str) -> Result<i32, DlmError> {
+    let file = tfs::File::open(input_file).await?;
+    let file_reader = tokio::io::BufReader::new(file);
+    let stream = LinesStream::new(file_reader.lines());
+    let line_nb = stream.fold(0, |acc, _| async move { acc + 1 }).await;
+    Ok(line_nb)
 }
 
 fn retry_on_connection_drop(e: DlmError) -> RetryPolicy<DlmError> {
