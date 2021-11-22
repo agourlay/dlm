@@ -33,7 +33,7 @@ impl ProgressBarManager {
         let mp = MultiProgress::new();
 
         // main progress bar
-        let main_style = ProgressStyle::default_bar().template("{bar:130} {pos}/{len}");
+        let main_style = ProgressStyle::default_bar().template("{bar:133} {pos}/{len}");
         let main_pb = mp.add(ProgressBar::new(0));
         main_pb.set_style(main_style);
         main_pb.set_length(main_pb_len);
