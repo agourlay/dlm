@@ -2,12 +2,12 @@ mod args;
 mod dlm_error;
 mod downloader;
 mod file_link;
-mod progress_bars;
+mod progress_bar_manager;
 
 use crate::args::get_args;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
-use crate::progress_bars::{init_progress_bars, finish_progress_bars, logger};
+use crate::progress_bar_manager::ProgressBarManager;
 use futures_retry::{FutureRetry, RetryPolicy};
 use futures_util::stream::StreamExt;
 use reqwest::Client;
@@ -30,11 +30,10 @@ async fn main() -> Result<(), DlmError> {
     let od_ref = &output_dir;
     let c_ref = &client;
 
-    let (main_pb, tx, rx) = init_progress_bars(max_concurrent_downloads);
-    main_pb.set_length(nb_of_lines as u64);
-    let main_pb_ref = &main_pb;
-    let rx_ref = &rx;
-    let tx_ref = &tx;
+    let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64);
+    let main_pb_ref = pbm.get_main_pb_ref();
+    let rx_ref = pbm.get_rx_ref();
+    let tx_ref = pbm.get_tx_ref();
 
     let stream = LinesStream::new(file_reader.lines());
     stream
@@ -54,17 +53,17 @@ async fn main() -> Result<(), DlmError> {
                     }
                 }
             };
-            logger(&pb, message);
+            ProgressBarManager::logger(&pb, message);
             tx_ref.send(pb).expect("releasing channel should not fail");
             main_pb_ref.inc(1);
         })
         .await;
 
-    finish_progress_bars(max_concurrent_downloads, main_pb_ref, rx);
+    pbm.finish_all();
     Ok(())
 }
 
-// Can we do this without loading the whole file in memory?
+// TODO can we do this without loading the whole file in memory?
 async fn count_lines(input_file: &str) -> Result<i32, DlmError> {
     let file = tfs::File::open(input_file).await?;
     let file_reader = tokio::io::BufReader::new(file);

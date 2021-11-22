@@ -8,7 +8,7 @@ pub fn get_args() -> (String, usize, String) {
         .about("Minimal download manager")
         .arg(
             Arg::with_name("maxConcurrentDownloads")
-                .help("used to limit //")
+                .help("used to limit the number of downloads in flight")
                 .long("maxConcurrentDownloads")
                 .short("M")
                 .takes_value(true)
