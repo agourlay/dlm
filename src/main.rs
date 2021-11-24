@@ -30,15 +30,12 @@ async fn main() -> Result<(), DlmError> {
     let od_ref = &output_dir;
     let c_ref = &client;
 
-    let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64);
-    let main_pb_ref = pbm.get_main_pb_ref();
-    let rx_ref = pbm.get_rx_ref();
-    let tx_ref = pbm.get_tx_ref();
-
-    let stream = LinesStream::new(file_reader.lines());
-    stream
+    let (rendering_handle, pbm) = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64).await;
+    let pbm_ref = &pbm;
+    let line_stream = LinesStream::new(file_reader.lines());
+    line_stream
         .for_each_concurrent(max_concurrent_downloads, |link_res| async move {
-            let pb = rx_ref.recv().expect("claiming channel should not fail");
+            let pb = pbm_ref.rx.recv().await.expect("claiming progress bar should not fail");
             let message = match link_res {
                 Err(e) => format!("Error with links iterator {}", e),
                 Ok(link) if link.trim().is_empty() => "Skipping empty line".to_string(),
@@ -54,12 +51,13 @@ async fn main() -> Result<(), DlmError> {
                 }
             };
             ProgressBarManager::logger(&pb, message);
-            tx_ref.send(pb).expect("releasing channel should not fail");
-            main_pb_ref.inc(1);
+            pbm_ref.tx.send(pb).await.expect("releasing progress bar should not fail");
+            pbm_ref.main_pb.inc(1);
         })
         .await;
 
-    pbm.finish_all();
+    pbm_ref.finish_all().await?;
+    rendering_handle.await?;
     Ok(())
 }
 

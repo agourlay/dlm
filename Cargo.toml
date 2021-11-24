@@ -5,12 +5,13 @@ authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-futures = "0.3.17"
-futures-util = "0.3.17"
+futures = "0.3.18"
+futures-util = "0.3.18"
 hyper = "0.14.15"
 reqwest = "0.11.6"
 tokio-stream = { version = "0.1.8", features = ["io-util"] }
-tokio = { version = "1.14", features = ["full"] }
+tokio = { version = "1.14", features = ["rt-multi-thread", "fs", "macros"] }
+async-channel = "1.6.1"
 futures-retry = "0.6.0"
 chrono = "0.4.19"
 clap = "2.33.3"

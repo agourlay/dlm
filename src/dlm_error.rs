@@ -1,3 +1,4 @@
+use tokio::task::JoinError;
 use tokio::time::error::Elapsed;
 
 #[derive(Debug)]
@@ -8,6 +9,8 @@ pub enum DlmError {
     ResponseStatusNotSuccess { message: String },
     UrlDecodeError { message: String },
     StdIoError { e: std::io::Error },
+    TaskError { e: JoinError},
+    ChannelError { e: async_channel::RecvError },
     Other { message: String },
 }
 
@@ -37,5 +40,17 @@ impl std::convert::From<std::io::Error> for DlmError {
 impl std::convert::From<Elapsed> for DlmError {
     fn from(_: Elapsed) -> Self {
         DlmError::DeadLineElapsedTimeout
+    }
+}
+
+impl std::convert::From<JoinError> for DlmError {
+    fn from(e: JoinError) -> Self {
+        DlmError::TaskError { e }
+    }
+}
+
+impl std::convert::From<async_channel::RecvError> for DlmError {
+    fn from(e: async_channel::RecvError) -> Self {
+        DlmError::ChannelError { e }
     }
 }

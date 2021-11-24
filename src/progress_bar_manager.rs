@@ -1,35 +1,22 @@
 use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::Ordering;
-use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
+use async_channel::{Receiver, Sender};
+use tokio::task::JoinHandle;
+use crate::DlmError;
 
 const PENDING: &str = "pending";
 
-// TODO use Tokio's mpsc to not mix Tasks with Threads
 pub struct ProgressBarManager {
-    main_pb: ProgressBar,
-    file_pb_count: usize,
-    tx: Sender<ProgressBar>,
-    rx: Receiver<ProgressBar>
+    pub main_pb: ProgressBar,
+    pub file_pb_count: usize,
+    pub tx: Sender<ProgressBar>,
+    pub rx: Receiver<ProgressBar>
 }
 
 impl ProgressBarManager {
 
-    pub fn get_main_pb_ref(&self) -> &ProgressBar {
-        &self.main_pb
-    }
-
-    pub fn get_rx_ref(&self) -> &Receiver<ProgressBar> {
-        &self.rx
-    }
-
-    pub fn get_tx_ref(&self) -> &Sender<ProgressBar> {
-        &self.tx
-    }
-
-    pub fn init(max_concurrent_downloads: usize, main_pb_len: u64) -> Self {
+    pub async fn init(max_concurrent_downloads: usize, main_pb_len: u64) -> (JoinHandle<()>, ProgressBarManager) {
         let mp = MultiProgress::new();
 
         // main progress bar
@@ -38,7 +25,11 @@ impl ProgressBarManager {
         main_pb.set_style(main_style);
         main_pb.set_length(main_pb_len);
 
-        let (tx, rx): (Sender<ProgressBar>, Receiver<ProgressBar>) = mpsc::channel();
+        // If you need a multi-producer multi-consumer channel where only one consumer sees each message, you can use the async-channel crate.
+        // There are also channels for use outside of asynchronous Rust, such as std::sync::mpsc and crossbeam::channel.
+        // These channels wait for messages by blocking the thread, which is not allowed in asynchronous code.
+        // ref: https://tokio.rs/tokio/tutorial/channels
+        let (tx, rx): (Sender<ProgressBar>, Receiver<ProgressBar>) = async_channel::bounded(max_concurrent_downloads);
 
         let dl_style = ProgressStyle::default_bar()
             .template("{msg} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")
@@ -49,28 +40,30 @@ impl ProgressBarManager {
             let file_pb = mp.add(ProgressBar::new(0));
             file_pb.set_style(dl_style.clone());
             file_pb.set_message(ProgressBarManager::message_progress_bar(PENDING));
-            tx.send(file_pb).expect("channel should not fail");
+            tx.send(file_pb).await.expect("channel should not fail");
         }
 
-        // Render MultiProgress bar
-        let _ = thread::spawn(move || {
+        // Render MultiProgress bar async. in a dedicated blocking thread
+        let h = tokio::task::spawn_blocking(move || {
             mp.join_and_clear().unwrap();
         });
 
-        ProgressBarManager {
+        let pbm = ProgressBarManager {
             main_pb,
             file_pb_count: max_concurrent_downloads,
             rx,
             tx
-        }
+        };
+        (h, pbm)
     }
 
-    pub fn finish_all(&self) {
+    pub async fn finish_all(&self) -> Result<(), DlmError> {
         for _ in 0..self.file_pb_count {
-            let pb = self.rx.recv().expect("claiming channel should not fail");
+            let pb = self.rx.recv().await?;
             pb.finish();
         }
         self.main_pb.finish();
+        Ok(())
     }
 
     pub fn message_progress_bar(s: &str) -> String {
