@@ -8,12 +8,13 @@ use crate::args::get_args;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
 use crate::progress_bar_manager::ProgressBarManager;
-use futures_retry::{FutureRetry, RetryPolicy};
 use futures_util::stream::StreamExt;
 use reqwest::Client;
 use std::time::Duration;
 use tokio::fs as tfs;
 use tokio::io::AsyncBufReadExt;
+use tokio_retry::RetryIf;
+use tokio_retry::strategy::{ExponentialBackoff, jitter};
 use tokio_stream::wrappers::LinesStream;
 
 #[tokio::main]
@@ -52,14 +53,22 @@ async fn main() -> Result<(), DlmError> {
                 Ok(link) => {
                     // claim a progress bar for the upcoming download
                     let dl_pb = pbm_ref.rx.recv().await.expect("claiming progress bar should not fail");
-                    let processed = FutureRetry::new(
+
+                    // exponential backoff retries for network errors
+                    let retry_strategy = ExponentialBackoff::from_millis(1000)
+                        .map(jitter) // add jitter to delays
+                        .take(10); // limit to 10 retries
+
+                    let processed = RetryIf::spawn(
+                        retry_strategy,
                         || download_link(&link, c_ref, od_ref, &dl_pb),
-                        retry_on_connection_drop,
+                        network_error
                     ).await;
+
                     pbm_ref.tx.send(dl_pb).await.expect("releasing progress bar should not fail");
                     match processed {
-                       Ok((info, _)) => info,
-                       Err((e, retry_count)) => format!("Error: {:?} (retried {} times)", e, retry_count),
+                       Ok(info) => info,
+                       Err(e) => format!("Error while processing {}\n {:?}", link, e),
                     }
                 }
             };
@@ -74,7 +83,6 @@ async fn main() -> Result<(), DlmError> {
     Ok(())
 }
 
-// TODO can we do this without loading the whole file in memory?
 async fn count_lines(input_file: &str) -> Result<i32, DlmError> {
     let file = tfs::File::open(input_file).await?;
     let file_reader = tokio::io::BufReader::new(file);
@@ -83,11 +91,8 @@ async fn count_lines(input_file: &str) -> Result<i32, DlmError> {
     Ok(line_nb)
 }
 
-fn retry_on_connection_drop(e: DlmError) -> RetryPolicy<DlmError> {
-    match e {
-        DlmError::ConnectionClosed
+fn network_error(e: &DlmError) -> bool {
+    matches!(e, DlmError::ConnectionClosed
         | DlmError::ResponseBodyError
-        | DlmError::DeadLineElapsedTimeout => RetryPolicy::WaitRetry(Duration::from_secs(10)),
-        _ => RetryPolicy::ForwardError(e),
-    }
+        | DlmError::DeadLineElapsedTimeout)
 }

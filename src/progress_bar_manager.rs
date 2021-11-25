@@ -45,7 +45,10 @@ impl ProgressBarManager {
 
         // Render MultiProgress bar async. in a dedicated blocking thread
         let h = tokio::task::spawn_blocking(move || {
-            mp.join_and_clear().unwrap();
+            match mp.join_and_clear() {
+                Ok(_) => (),
+                Err(e) => println!("Error while rendering progress bars {}", e)
+            }
         });
 
         let pbm = ProgressBarManager {
