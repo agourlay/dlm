@@ -8,8 +8,8 @@ use crate::DlmError;
 const PENDING: &str = "pending";
 
 pub struct ProgressBarManager {
-    pub main_pb: ProgressBar,
-    pub file_pb_count: usize,
+    main_pb: ProgressBar,
+    file_pb_count: usize,
     pub tx: Sender<ProgressBar>,
     pub rx: Receiver<ProgressBar>
 }
@@ -66,6 +66,10 @@ impl ProgressBarManager {
         Ok(())
     }
 
+    pub fn increment_global_progress(&self) {
+        self.main_pb.inc(1)
+    }
+
     pub fn message_progress_bar(s: &str) -> String {
         let max = 35; // arbitrary limit
         let count = s.chars().count();
@@ -77,7 +81,11 @@ impl ProgressBarManager {
         }
     }
 
-    pub fn logger(pb: &ProgressBar, msg: String) {
+    pub fn log_above_progress_bars(&self, msg: String) {
+        ProgressBarManager::log_above_progress_bar(&self.main_pb, msg)
+    }
+
+    pub fn log_above_progress_bar(pb: &ProgressBar, msg: String) {
         pb.println(format!("[{}] {}", Local::now().naive_local(), msg));
     }
 }

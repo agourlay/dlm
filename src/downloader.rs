@@ -160,7 +160,7 @@ async fn compute_query_range(
                     "Found part file {} with size {} but it will be overridden because the server does not support resuming the download (range bytes)",
                     tmp_name, tmp_size
                 );
-                ProgressBarManager::logger(pb, log);
+                ProgressBarManager::log_above_progress_bar(pb, log);
                 Ok(None)
             }
         }
@@ -170,7 +170,7 @@ async fn compute_query_range(
                 "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
                 tmp_name
             );
-            ProgressBarManager::logger(pb, log);
+            ProgressBarManager::log_above_progress_bar(pb, log);
         };
         Ok(None)
     }

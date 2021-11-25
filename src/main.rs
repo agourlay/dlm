@@ -18,44 +18,57 @@ use tokio_stream::wrappers::LinesStream;
 
 #[tokio::main]
 async fn main() -> Result<(), DlmError> {
+    // CLI args
     let (input_file, max_concurrent_downloads, output_dir) = get_args();
-    let nb_of_lines = count_lines(&input_file).await?;
-    let file = tfs::File::open(input_file).await?;
-    let file_reader = tokio::io::BufReader::new(file);
 
+    // setup HTTP client
     let client = Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(0)
         .build()?;
-    let od_ref = &output_dir;
     let c_ref = &client;
+    let od_ref = &output_dir;
 
+    // setup progress bar manager
+    let nb_of_lines = count_lines(&input_file).await?;
     let (rendering_handle, pbm) = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64).await;
     let pbm_ref = &pbm;
+
+    // print startup info
+    let msg_header = format!("Starting dlm with at most {} concurrent downloads", max_concurrent_downloads);
+    pbm.log_above_progress_bars(msg_header);
+    let msg_count = format!("Found {} URLs in input file {}", nb_of_lines, input_file);
+    pbm.log_above_progress_bars(msg_count);
+
+    // start streaming lines from file
+    let file = tfs::File::open(input_file).await?;
+    let file_reader = tokio::io::BufReader::new(file);
     let line_stream = LinesStream::new(file_reader.lines());
     line_stream
         .for_each_concurrent(max_concurrent_downloads, |link_res| async move {
-            let pb = pbm_ref.rx.recv().await.expect("claiming progress bar should not fail");
             let message = match link_res {
                 Err(e) => format!("Error with links iterator {}", e),
                 Ok(link) if link.trim().is_empty() => "Skipping empty line".to_string(),
                 Ok(link) => {
+                    // claim a progress bar for the upcoming download
+                    let dl_pb = pbm_ref.rx.recv().await.expect("claiming progress bar should not fail");
                     let processed = FutureRetry::new(
-                        || download_link(&link, c_ref, od_ref, &pb),
+                        || download_link(&link, c_ref, od_ref, &dl_pb),
                         retry_on_connection_drop,
-                    );
-                    match processed.await {
-                        Ok((info, _)) => info,
-                        Err((e, _)) => format!("Error: {:?}", e),
+                    ).await;
+                    pbm_ref.tx.send(dl_pb).await.expect("releasing progress bar should not fail");
+                    match processed {
+                       Ok((info, _)) => info,
+                       Err((e, retry_count)) => format!("Error: {:?} (retried {} times)", e, retry_count),
                     }
                 }
             };
-            ProgressBarManager::logger(&pb, message);
-            pbm_ref.tx.send(pb).await.expect("releasing progress bar should not fail");
-            pbm_ref.main_pb.inc(1);
+            pbm_ref.log_above_progress_bars(message);
+            pbm_ref.increment_global_progress();
         })
         .await;
 
+    // cleanup phase
     pbm_ref.finish_all().await?;
     rendering_handle.await?;
     Ok(())
