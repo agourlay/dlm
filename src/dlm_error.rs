@@ -4,6 +4,7 @@ use tokio::time::error::Elapsed;
 #[derive(Debug)]
 pub enum DlmError {
     ConnectionClosed,
+    ConnectionTimeout,
     ResponseBodyError,
     DeadLineElapsedTimeout,
     ResponseStatusNotSuccess { message: String },
@@ -15,6 +16,7 @@ pub enum DlmError {
 }
 
 const CONNECTION_CLOSED: &str = "connection closed before message completed";
+const CONNECTION_TIMEOUT: &str = "error trying to connect: operation timed out";
 const BODY_ERROR: &str = "error reading a body from connection";
 
 impl std::convert::From<reqwest::Error> for DlmError {
@@ -25,6 +27,8 @@ impl std::convert::From<reqwest::Error> for DlmError {
             DlmError::ResponseBodyError
         } else if e_string.contains(CONNECTION_CLOSED) {
             DlmError::ConnectionClosed
+        } else if e_string.contains(CONNECTION_TIMEOUT) {
+            DlmError::ConnectionTimeout
         } else {
             DlmError::Other { message: e_string }
         }

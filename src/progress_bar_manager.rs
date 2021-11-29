@@ -89,6 +89,11 @@ impl ProgressBarManager {
     }
 
     pub fn log_above_progress_bar(pb: &ProgressBar, msg: String) {
-        pb.println(format!("[{}] {}", Local::now().naive_local(), msg));
+        pb.println(format!("[{}] {}", Local::now().naive_local().format("%Y-%m-%d %H:%M:%S"), msg));
+    }
+
+    pub fn reset_progress_bar(pb: &ProgressBar) {
+        pb.reset();
+        pb.set_message(ProgressBarManager::message_progress_bar(PENDING));
     }
 }

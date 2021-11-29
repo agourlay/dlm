@@ -62,13 +62,17 @@ async fn main() -> Result<(), DlmError> {
                     let processed = RetryIf::spawn(
                         retry_strategy,
                         || download_link(&link, c_ref, od_ref, &dl_pb),
-                        network_error
+                        |e: &DlmError| retry_handler(e, pbm_ref, &link,)
                     ).await;
 
+                    // reset & release progress bar
+                    ProgressBarManager::reset_progress_bar(&dl_pb);
                     pbm_ref.tx.send(dl_pb).await.expect("releasing progress bar should not fail");
+
+                    // extract result
                     match processed {
                        Ok(info) => info,
-                       Err(e) => format!("Error while processing {}\n {:?}", link, e),
+                       Err(e) => format!("Unrecoverable error while processing {}: {:?}", link, e),
                     }
                 }
             };
@@ -91,7 +95,16 @@ async fn count_lines(input_file: &str) -> Result<i32, DlmError> {
     Ok(line_nb)
 }
 
-fn network_error(e: &DlmError) -> bool {
+fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool {
+    let should_retry = is_network_error(e);
+    if should_retry {
+        let msg = format!("Retrying {} after error {:?}", link, e);
+        pbm.log_above_progress_bars(msg)
+    }
+    should_retry
+}
+
+fn is_network_error(e: &DlmError) -> bool {
     matches!(e, DlmError::ConnectionClosed
         | DlmError::ResponseBodyError
         | DlmError::DeadLineElapsedTimeout)
