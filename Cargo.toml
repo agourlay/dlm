@@ -8,11 +8,11 @@ edition = "2018"
 futures = "0.3.18"
 futures-util = "0.3.18"
 hyper = "0.14.15"
-reqwest = "0.11.6"
+reqwest = "0.11.7"
 tokio-stream = { version = "0.1.8", features = ["io-util"] }
 tokio = { version = "1.14", features = ["rt-multi-thread", "fs", "macros"] }
 tokio-retry = "0.3"
 async-channel = "1.6.1"
 chrono = "0.4.19"
-clap = "2.33.3"
+clap = "2.34.0"
 indicatif = "0.16.2"
