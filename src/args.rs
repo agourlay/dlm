@@ -3,7 +3,7 @@ use std::path::Path;
 
 pub fn get_args() -> (String, usize, String) {
     let matches = App::new("dlm")
-        .version("0.1.1")
+        .version("0.2.0")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
         .about("Minimal download manager")
         .arg(
