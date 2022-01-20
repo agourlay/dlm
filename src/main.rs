@@ -31,7 +31,7 @@ async fn main() -> Result<(), DlmError> {
     let od_ref = &output_dir;
 
     // setup progress bar manager
-    let nb_of_lines = count_lines(&input_file).await?;
+    let nb_of_lines = count_non_empty_lines(&input_file).await?;
     let (rendering_handle, pbm) = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64).await;
     let pbm_ref = &pbm;
 
@@ -87,11 +87,16 @@ async fn main() -> Result<(), DlmError> {
     Ok(())
 }
 
-async fn count_lines(input_file: &str) -> Result<i32, DlmError> {
+async fn count_non_empty_lines(input_file: &str) -> Result<i32, DlmError> {
     let file = tfs::File::open(input_file).await?;
     let file_reader = tokio::io::BufReader::new(file);
     let stream = LinesStream::new(file_reader.lines());
-    let line_nb = stream.fold(0, |acc, _| async move { acc + 1 }).await;
+    let line_nb = stream.fold(0, |acc, rl| async move {
+        match rl {
+            Ok(l) if !l.trim().is_empty() => acc + 1,
+            _ => acc
+        }
+    }).await;
     Ok(line_nb)
 }
 
