@@ -1,38 +1,42 @@
-use clap::{value_t, App, Arg};
+use clap::{App, Arg};
 use std::path::Path;
 
-pub fn get_args() -> (String, usize, String) {
-    let matches = App::new("dlm")
+fn app() -> clap::App<'static> {
+    App::new("dlm")
         .version("0.2.0")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
         .about("Minimal download manager")
         .arg(
-            Arg::with_name("maxConcurrentDownloads")
+            Arg::new("maxConcurrentDownloads")
                 .help("used to limit the number of downloads in flight")
                 .long("maxConcurrentDownloads")
-                .short("M")
+                .short('M')
                 .takes_value(true)
                 .required(true),
         )
         .arg(
-            Arg::with_name("inputFile")
+            Arg::new("inputFile")
                 .help("input file with links")
                 .long("inputFile")
-                .short("i")
+                .short('i')
                 .takes_value(true)
                 .required(true),
         )
         .arg(
-            Arg::with_name("outputDir")
+            Arg::new("outputDir")
                 .help("output directory for downloads")
                 .long("outputDir")
-                .short("o")
+                .short('o')
                 .takes_value(true)
                 .required(true),
         )
-        .get_matches();
+}
 
-    let max_concurrent_downloads = value_t!(matches, "maxConcurrentDownloads", usize)
+pub fn get_args() -> (String, usize, String) {
+    let app = app();
+    let matches = app.get_matches();
+
+    let max_concurrent_downloads = matches.value_of_t("maxConcurrentDownloads")
         .expect("maxConcurrentDownloads was not an integer");
     if max_concurrent_downloads == 0 {
         panic!("invalid maxConcurrentDownloads - must be a positive integer")
@@ -53,4 +57,14 @@ pub fn get_args() -> (String, usize, String) {
         max_concurrent_downloads,
         output_dir.to_string(),
     )
+}
+
+#[cfg(test)]
+mod args_tests {
+    use crate::args::app;
+
+    #[test]
+    fn verify_app() {
+        app().debug_assert();
+    }
 }
