@@ -1,3 +1,5 @@
+use crate::DlmError;
+use crate::DlmError::CliArgumentError;
 use clap::{App, Arg};
 use std::path::Path;
 
@@ -32,32 +34,42 @@ fn app() -> clap::App<'static> {
         )
 }
 
-pub fn get_args() -> (String, usize, String) {
+pub fn get_args() -> Result<(String, usize, String), DlmError> {
     let app = app();
     let matches = app.get_matches();
 
-    let max_concurrent_downloads = matches
-        .value_of_t("maxConcurrentDownloads")
-        .expect("maxConcurrentDownloads was not an integer");
+    let max_concurrent_downloads =
+        matches
+            .value_of_t("maxConcurrentDownloads")
+            .map_err(|_| CliArgumentError {
+                message: "maxConcurrentDownloads was not an integer".to_string(),
+            })?;
+
     if max_concurrent_downloads == 0 {
-        panic!("invalid maxConcurrentDownloads - must be a positive integer")
+        return Err(CliArgumentError {
+            message: "maxConcurrentDownloads was not an integer".to_string(),
+        });
     }
 
     let input_file = matches.value_of("inputFile").expect("impossible");
     if !Path::new(input_file).is_file() {
-        panic!("inputFile does not exist")
+        return Err(CliArgumentError {
+            message: "inputFile does not exist".to_string(),
+        });
     }
 
     let output_dir = matches.value_of("outputDir").expect("impossible");
     if !Path::new(output_dir).is_dir() {
-        panic!("outputDir does not exist")
+        return Err(CliArgumentError {
+            message: "outputDir does not exist".to_string(),
+        });
     }
 
-    (
+    Ok((
         input_file.to_string(),
         max_concurrent_downloads,
         output_dir.to_string(),
-    )
+    ))
 }
 
 #[cfg(test)]

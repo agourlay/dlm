@@ -20,7 +20,7 @@ use tokio_stream::wrappers::LinesStream;
 #[tokio::main]
 async fn main() -> Result<(), DlmError> {
     // CLI args
-    let (input_file, max_concurrent_downloads, output_dir) = get_args();
+    let (input_file, max_concurrent_downloads, output_dir) = get_args()?;
 
     // setup HTTP client
     let client = Client::builder()

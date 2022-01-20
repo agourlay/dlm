@@ -1,6 +1,6 @@
+use thiserror::Error;
 use tokio::task::JoinError;
 use tokio::time::error::Elapsed;
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum DlmError {
@@ -22,6 +22,8 @@ pub enum DlmError {
     TaskError { e: JoinError },
     #[error("channel error ({e:?})")]
     ChannelError { e: async_channel::RecvError },
+    #[error("CLI argument error ({message:?})")]
+    CliArgumentError { message: String },
     #[error("other error ({message:?})")]
     Other { message: String },
 }
