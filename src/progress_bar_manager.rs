@@ -1,6 +1,6 @@
 use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use std::cmp::Ordering;
+use std::cmp::{min, Ordering};
 use async_channel::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use crate::DlmError;
@@ -53,7 +53,7 @@ impl ProgressBarManager {
 
         let pbm = ProgressBarManager {
             main_pb,
-            file_pb_count: max_concurrent_downloads,
+            file_pb_count: min(max_concurrent_downloads, main_pb_len as usize),
             rx,
             tx
         };
