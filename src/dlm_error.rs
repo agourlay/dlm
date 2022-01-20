@@ -1,17 +1,28 @@
 use tokio::task::JoinError;
 use tokio::time::error::Elapsed;
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum DlmError {
+    #[error("connection closed")]
     ConnectionClosed,
+    #[error("connection timeout")]
     ConnectionTimeout,
+    #[error("response body error")]
     ResponseBodyError,
+    #[error("deadline elapsed timeout")]
     DeadLineElapsedTimeout,
+    #[error("response status not success ({message:?})")]
     ResponseStatusNotSuccess { message: String },
+    #[error("URL decode error ({message:?})")]
     UrlDecodeError { message: String },
+    #[error("standard I/O error ({e:?})")]
     StdIoError { e: std::io::Error },
+    #[error("task error ({e:?})")]
     TaskError { e: JoinError },
+    #[error("channel error ({e:?})")]
     ChannelError { e: async_channel::RecvError },
+    #[error("other error ({message:?})")]
     Other { message: String },
 }
 

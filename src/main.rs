@@ -85,7 +85,7 @@ async fn main() -> Result<(), DlmError> {
                     // extract result
                     match processed {
                         Ok(info) => info,
-                        Err(e) => format!("Unrecoverable error while processing {}: {:?}", link, e),
+                        Err(e) => format!("Unrecoverable error while processing {}: {}", link, e),
                     }
                 }
             };
