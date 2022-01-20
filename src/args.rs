@@ -36,7 +36,8 @@ pub fn get_args() -> (String, usize, String) {
     let app = app();
     let matches = app.get_matches();
 
-    let max_concurrent_downloads = matches.value_of_t("maxConcurrentDownloads")
+    let max_concurrent_downloads = matches
+        .value_of_t("maxConcurrentDownloads")
         .expect("maxConcurrentDownloads was not an integer");
     if max_concurrent_downloads == 0 {
         panic!("invalid maxConcurrentDownloads - must be a positive integer")

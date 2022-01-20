@@ -1,9 +1,9 @@
+use crate::DlmError;
+use async_channel::{Receiver, Sender};
 use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::{min, Ordering};
-use async_channel::{Receiver, Sender};
 use tokio::task::JoinHandle;
-use crate::DlmError;
 
 const PENDING: &str = "pending";
 
@@ -11,12 +11,14 @@ pub struct ProgressBarManager {
     main_pb: ProgressBar,
     file_pb_count: usize,
     pub tx: Sender<ProgressBar>,
-    pub rx: Receiver<ProgressBar>
+    pub rx: Receiver<ProgressBar>,
 }
 
 impl ProgressBarManager {
-
-    pub async fn init(max_concurrent_downloads: usize, main_pb_len: u64) -> (JoinHandle<()>, ProgressBarManager) {
+    pub async fn init(
+        max_concurrent_downloads: usize,
+        main_pb_len: u64,
+    ) -> (JoinHandle<()>, ProgressBarManager) {
         let mp = MultiProgress::new();
 
         // main progress bar
@@ -29,7 +31,8 @@ impl ProgressBarManager {
         // There are also channels for use outside of asynchronous Rust, such as std::sync::mpsc and crossbeam::channel.
         // These channels wait for messages by blocking the thread, which is not allowed in asynchronous code.
         // ref: https://tokio.rs/tokio/tutorial/channels
-        let (tx, rx): (Sender<ProgressBar>, Receiver<ProgressBar>) = async_channel::bounded(max_concurrent_downloads);
+        let (tx, rx): (Sender<ProgressBar>, Receiver<ProgressBar>) =
+            async_channel::bounded(max_concurrent_downloads);
 
         let dl_style = ProgressStyle::default_bar()
             .template("{msg} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")
@@ -44,18 +47,16 @@ impl ProgressBarManager {
         }
 
         // Render MultiProgress bar async. in a dedicated blocking thread
-        let h = tokio::task::spawn_blocking(move || {
-            match mp.join_and_clear() {
-                Ok(_) => (),
-                Err(e) => println!("Error while rendering progress bars {}", e)
-            }
+        let h = tokio::task::spawn_blocking(move || match mp.join_and_clear() {
+            Ok(_) => (),
+            Err(e) => println!("Error while rendering progress bars {}", e),
         });
 
         let pbm = ProgressBarManager {
             main_pb,
             file_pb_count: min(max_concurrent_downloads, main_pb_len as usize),
             rx,
-            tx
+            tx,
         };
         (h, pbm)
     }
@@ -89,7 +90,11 @@ impl ProgressBarManager {
     }
 
     pub fn log_above_progress_bar(pb: &ProgressBar, msg: String) {
-        pb.println(format!("[{}] {}", Local::now().naive_local().format("%Y-%m-%d %H:%M:%S"), msg));
+        pb.println(format!(
+            "[{}] {}",
+            Local::now().naive_local().format("%Y-%m-%d %H:%M:%S"),
+            msg
+        ));
     }
 
     pub fn reset_progress_bar(pb: &ProgressBar) {

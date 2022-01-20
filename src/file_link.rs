@@ -13,7 +13,6 @@ pub struct FileLink {
 const NO_EXT: &str = ".NO_EXT";
 
 impl FileLink {
-
     pub fn new(url: String) -> Result<FileLink, DlmError> {
         let trimmed = url.trim();
         if trimmed.is_empty() {
@@ -28,7 +27,11 @@ impl FileLink {
             Err(Other { message })
         } else {
             let url_decoded = url_decode(url.as_str())?;
-            let last_segment_rev: String = url_decoded.chars().rev().take_while(|c| c != &'/').collect();
+            let last_segment_rev: String = url_decoded
+                .chars()
+                .rev()
+                .take_while(|c| c != &'/')
+                .collect();
             let (extension, file_name_no_extension) = if last_segment_rev.contains('.') {
                 let ext_rev: String = last_segment_rev.chars().take_while(|c| c != &'.').collect();
                 let ext: String = ext_rev.chars().rev().collect();

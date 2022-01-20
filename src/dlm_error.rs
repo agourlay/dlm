@@ -10,7 +10,7 @@ pub enum DlmError {
     ResponseStatusNotSuccess { message: String },
     UrlDecodeError { message: String },
     StdIoError { e: std::io::Error },
-    TaskError { e: JoinError},
+    TaskError { e: JoinError },
     ChannelError { e: async_channel::RecvError },
     Other { message: String },
 }
