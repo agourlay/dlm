@@ -131,7 +131,7 @@ mod file_link_tests {
     #[test]
     fn trailing_slash() {
         let url = "http://www.google.com/area51/".to_string();
-        match FileLink::new(url.clone()) {
+        match FileLink::new(url) {
             Err(DlmError::Other { message }) => assert_eq!(
                 message,
                 "FileLink cannot be built with an invalid extension 'http://www.google.com/area51/'".to_string()
