@@ -13,7 +13,7 @@ A minimal HTTP download manager that works just fine.
 
 ```
 ./dlm --help
-dlm 0.2.1
+dlm x.x.x
 Arnaud Gourlay <arnaud.gourlay@gmail.com>
 Minimal download manager
 

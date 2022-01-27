@@ -18,7 +18,18 @@ use tokio_retry::RetryIf;
 use tokio_stream::wrappers::LinesStream;
 
 #[tokio::main]
-async fn main() -> Result<(), DlmError> {
+async fn main() {
+    let result = main_result().await;
+    std::process::exit(match result {
+        Ok(_) => 0,
+        Err(err) => {
+            eprintln!("{}", err);
+            1
+        }
+    });
+}
+
+async fn main_result() -> Result<(), DlmError> {
     // CLI args
     let (input_file, max_concurrent_downloads, output_dir) = get_args()?;
 
