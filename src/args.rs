@@ -5,7 +5,7 @@ use std::path::Path;
 
 fn app() -> clap::App<'static> {
     App::new("dlm")
-        .version("0.2.1")
+        .version("0.2.2")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
         .about("Minimal download manager")
         .arg(
