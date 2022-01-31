@@ -149,6 +149,7 @@ dependencies = [
  "futures-util",
  "hyper",
  "indicatif",
+ "rand",
  "reqwest",
  "thiserror",
  "tokio",

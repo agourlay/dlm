@@ -1,3 +1,5 @@
+use crate::user_agents::UserAgent;
+use crate::user_agents::UserAgent::{CustomUserAgent, RandomUserAgent};
 use crate::DlmError;
 use crate::DlmError::CliArgumentError;
 use clap::{App, Arg};
@@ -32,9 +34,23 @@ fn app() -> clap::App<'static> {
                 .takes_value(true)
                 .required(true),
         )
+        .arg(
+            Arg::new("userAgent")
+                .help("User-Agent header to be used by the HTTP client")
+                .long("userAgent")
+                .short('U')
+                .takes_value(true)
+                .required(false),
+        )
+        .arg(
+            Arg::new("randomUserAgent")
+                .help("sets up a random User-Agent header to be used by the HTTP client")
+                .long("randomUserAgent")
+                .required(false),
+        )
 }
 
-pub fn get_args() -> Result<(String, usize, String), DlmError> {
+pub fn get_args() -> Result<(String, usize, String, Option<UserAgent>), DlmError> {
     let app = app();
     let matches = app.get_matches();
 
@@ -65,10 +81,24 @@ pub fn get_args() -> Result<(String, usize, String), DlmError> {
         });
     }
 
+    let user_agent: Option<UserAgent> = if matches.is_present("userAgent") {
+        Some(CustomUserAgent(
+            matches
+                .value_of("userAgent")
+                .expect("impossible")
+                .to_string(),
+        ))
+    } else if matches.is_present("randomUserAgent") {
+        Some(RandomUserAgent)
+    } else {
+        None
+    };
+
     Ok((
         input_file.to_string(),
         max_concurrent_downloads,
         output_dir.to_string(),
+        user_agent,
     ))
 }
 

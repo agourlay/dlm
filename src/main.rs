@@ -3,11 +3,13 @@ mod dlm_error;
 mod downloader;
 mod file_link;
 mod progress_bar_manager;
+mod user_agents;
 
 use crate::args::get_args;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
 use crate::progress_bar_manager::ProgressBarManager;
+use crate::user_agents::{random_user_agent, UserAgent};
 use futures_util::stream::StreamExt;
 use reqwest::Client;
 use std::time::Duration;
@@ -31,13 +33,21 @@ async fn main() {
 
 async fn main_result() -> Result<(), DlmError> {
     // CLI args
-    let (input_file, max_concurrent_downloads, output_dir) = get_args()?;
+    let (input_file, max_concurrent_downloads, output_dir, user_agent) = get_args()?;
 
     // setup HTTP client
-    let client = Client::builder()
+    let client_builder = Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .pool_max_idle_per_host(0)
-        .build()?;
+        .pool_max_idle_per_host(0);
+
+    // setup user-agent
+    let client_builder = match user_agent {
+        Some(UserAgent::CustomUserAgent(ua)) => client_builder.user_agent(ua),
+        Some(UserAgent::RandomUserAgent) => client_builder.user_agent(random_user_agent()),
+        _ => client_builder,
+    };
+
+    let client = client_builder.build()?;
     let c_ref = &client;
     let od_ref = &output_dir;
 
