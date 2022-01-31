@@ -5,13 +5,13 @@ mod file_link;
 mod progress_bar_manager;
 mod user_agents;
 
-use crate::args::get_args;
+use crate::args::{get_args, Arguments};
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
 use crate::progress_bar_manager::ProgressBarManager;
 use crate::user_agents::{random_user_agent, UserAgent};
 use futures_util::stream::StreamExt;
-use reqwest::Client;
+use reqwest::{Client, Proxy};
 use std::time::Duration;
 use tokio::fs as tfs;
 use tokio::io::AsyncBufReadExt;
@@ -33,7 +33,13 @@ async fn main() {
 
 async fn main_result() -> Result<(), DlmError> {
     // CLI args
-    let (input_file, max_concurrent_downloads, output_dir, user_agent) = get_args()?;
+    let Arguments {
+        input_file,
+        max_concurrent_downloads,
+        output_dir,
+        user_agent,
+        proxy,
+    } = get_args()?;
 
     // setup HTTP client
     let client_builder = Client::builder()
@@ -44,6 +50,12 @@ async fn main_result() -> Result<(), DlmError> {
     let client_builder = match user_agent {
         Some(UserAgent::CustomUserAgent(ua)) => client_builder.user_agent(ua),
         Some(UserAgent::RandomUserAgent) => client_builder.user_agent(random_user_agent()),
+        _ => client_builder,
+    };
+
+    // setup proxy
+    let client_builder = match proxy {
+        Some(p) => client_builder.proxy(Proxy::all(p)?),
         _ => client_builder,
     };
 

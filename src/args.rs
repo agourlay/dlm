@@ -48,9 +48,24 @@ fn app() -> clap::App<'static> {
                 .long("randomUserAgent")
                 .required(false),
         )
+        .arg(
+            Arg::new("proxy")
+                .help("configure the HTTP client to use a proxy")
+                .long("proxy")
+                .takes_value(true)
+                .required(false),
+        )
 }
 
-pub fn get_args() -> Result<(String, usize, String, Option<UserAgent>), DlmError> {
+pub struct Arguments {
+    pub input_file: String,
+    pub max_concurrent_downloads: usize,
+    pub output_dir: String,
+    pub user_agent: Option<UserAgent>,
+    pub proxy: Option<String>,
+}
+
+pub fn get_args() -> Result<Arguments, DlmError> {
     let app = app();
     let matches = app.get_matches();
 
@@ -67,15 +82,21 @@ pub fn get_args() -> Result<(String, usize, String, Option<UserAgent>), DlmError
         });
     }
 
-    let input_file = matches.value_of("inputFile").expect("impossible");
-    if !Path::new(input_file).is_file() {
+    let input_file = matches
+        .value_of("inputFile")
+        .expect("impossible")
+        .to_string();
+    if !Path::new(&input_file).is_file() {
         return Err(CliArgumentError {
             message: "inputFile does not exist".to_string(),
         });
     }
 
-    let output_dir = matches.value_of("outputDir").expect("impossible");
-    if !Path::new(output_dir).is_dir() {
+    let output_dir = matches
+        .value_of("outputDir")
+        .expect("impossible")
+        .to_string();
+    if !Path::new(&output_dir).is_dir() {
         return Err(CliArgumentError {
             message: "outputDir does not exist".to_string(),
         });
@@ -94,12 +115,19 @@ pub fn get_args() -> Result<(String, usize, String, Option<UserAgent>), DlmError
         None
     };
 
-    Ok((
-        input_file.to_string(),
+    let proxy = if matches.is_present("proxy") {
+        Some(matches.value_of("proxy").expect("impossible").to_string())
+    } else {
+        None
+    };
+
+    Ok(Arguments {
+        input_file,
         max_concurrent_downloads,
-        output_dir.to_string(),
+        output_dir,
         user_agent,
-    ))
+        proxy,
+    })
 }
 
 #[cfg(test)]
