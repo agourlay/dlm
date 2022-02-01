@@ -55,6 +55,15 @@ fn app() -> clap::App<'static> {
                 .takes_value(true)
                 .required(false),
         )
+        .arg(
+            Arg::new("retry")
+                .help("configure the number of retries in case of network error")
+                .long("retry")
+                .short('r')
+                .default_value("10")
+                .takes_value(true)
+                .required(false),
+        )
 }
 
 pub struct Arguments {
@@ -63,6 +72,7 @@ pub struct Arguments {
     pub output_dir: String,
     pub user_agent: Option<UserAgent>,
     pub proxy: Option<String>,
+    pub retry: usize,
 }
 
 pub fn get_args() -> Result<Arguments, DlmError> {
@@ -73,12 +83,12 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         matches
             .value_of_t("maxConcurrentDownloads")
             .map_err(|_| CliArgumentError {
-                message: "maxConcurrentDownloads was not an integer".to_string(),
+                message: "'maxConcurrentDownloads' was not an integer".to_string(),
             })?;
 
     if max_concurrent_downloads == 0 {
         return Err(CliArgumentError {
-            message: "maxConcurrentDownloads was not an integer".to_string(),
+            message: "'maxConcurrentDownloads' must be positive".to_string(),
         });
     }
 
@@ -88,7 +98,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         .to_string();
     if !Path::new(&input_file).is_file() {
         return Err(CliArgumentError {
-            message: "inputFile does not exist".to_string(),
+            message: "'inputFile' does not exist".to_string(),
         });
     }
 
@@ -98,7 +108,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         .to_string();
     if !Path::new(&output_dir).is_dir() {
         return Err(CliArgumentError {
-            message: "outputDir does not exist".to_string(),
+            message: "'outputDir' does not exist".to_string(),
         });
     }
 
@@ -121,12 +131,16 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         None
     };
 
+    // safe match because of default value
+    let retry = matches.value_of_t("retry")?;
+
     Ok(Arguments {
         input_file,
         max_concurrent_downloads,
         output_dir,
         user_agent,
         proxy,
+        retry,
     })
 }
 

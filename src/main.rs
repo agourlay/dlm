@@ -39,6 +39,7 @@ async fn main_result() -> Result<(), DlmError> {
         output_dir,
         user_agent,
         proxy,
+        retry,
     } = get_args()?;
 
     // setup HTTP client
@@ -98,7 +99,7 @@ async fn main_result() -> Result<(), DlmError> {
                     // exponential backoff retries for network errors
                     let retry_strategy = ExponentialBackoff::from_millis(1000)
                         .map(jitter) // add jitter to delays
-                        .take(10); // limit to 10 retries
+                        .take(retry); // limit retries
 
                     let processed = RetryIf::spawn(
                         retry_strategy,
