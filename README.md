@@ -37,6 +37,9 @@ OPTIONS:
         --proxy <proxy>
             configure the HTTP client to use a proxy
 
+    -r, --retry <retry>
+            configure the number of retries in case of network error [default: 10]
+
         --randomUserAgent
             sets up a random User-Agent header to be used by the HTTP client
 
