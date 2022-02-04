@@ -10,6 +10,7 @@ A minimal HTTP download manager that works just fine.
 - resume interrupted downloads if possible (using HTTP range)
 - automatically retry re-establishing download in case of timeout or hanging connection
 - multi progress bars (made with [indicatif](https://github.com/mitsuhiko/indicatif))
+- native support for proxies and redirects
 
 ```
 ./dlm --help
