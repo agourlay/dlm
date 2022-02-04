@@ -4,6 +4,7 @@ mod downloader;
 mod file_link;
 mod progress_bar_manager;
 mod user_agents;
+mod utils;
 
 use crate::args::{get_args, Arguments};
 use crate::dlm_error::DlmError;
@@ -103,7 +104,7 @@ async fn main_result() -> Result<(), DlmError> {
 
                     let processed = RetryIf::spawn(
                         retry_strategy,
-                        || download_link(&link, c_ref, od_ref, &dl_pb),
+                        || download_link(&link, c_ref, od_ref, &dl_pb, pbm_ref),
                         |e: &DlmError| retry_handler(e, pbm_ref, &link),
                     )
                     .await;

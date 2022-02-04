@@ -5,12 +5,9 @@ use std::str;
 
 pub struct FileLink {
     pub url: String,
-    pub file_name_no_extension: String,
-    pub extension: String,
-    pub file_name: String,
+    pub filename_without_extension: String,
+    pub extension: Option<String>,
 }
-
-const NO_EXT: &str = ".NO_EXT";
 
 impl FileLink {
     pub fn new(url: String) -> Result<FileLink, DlmError> {
@@ -32,37 +29,41 @@ impl FileLink {
                 .rev()
                 .take_while(|c| c != &'/')
                 .collect();
-            let (extension, file_name_no_extension) = if last_segment_rev.contains('.') {
-                let ext_rev: String = last_segment_rev.chars().take_while(|c| c != &'.').collect();
-                let ext: String = ext_rev.chars().rev().collect();
+            // ideally the last_segment is the filename
+            let last_segment = last_segment_rev.chars().rev().collect::<String>();
+            let (extension, filename_without_extension) =
+                Self::extract_extension_from_filename(last_segment);
 
-                let tmp: String = url_decoded
-                    .chars()
-                    .rev()
-                    .skip(ext.len())
-                    .take_while(|c| c != &'/')
-                    .collect();
-                let file_name_no_extension: String = tmp.chars().rev().collect();
-                (ext, file_name_no_extension)
-            } else {
-                let file_name_no_extension: String = last_segment_rev.chars().rev().collect();
-                // no extension detected - give it a fake one
-                (NO_EXT.to_string(), file_name_no_extension)
-            };
-
-            let file_name = format!("{}{}", file_name_no_extension, extension);
             let file_link = FileLink {
                 url,
-                file_name_no_extension,
+                filename_without_extension,
                 extension,
-                file_name,
             };
             Ok(file_link)
         }
     }
 
-    pub fn full_path(&self, output_dir: &str) -> String {
-        format!("{}/{}", output_dir, self.file_name)
+    pub fn extract_extension_from_filename(filename: String) -> (Option<String>, String) {
+        if filename.contains('.') {
+            let after_dot_rev: String = filename.chars().rev().take_while(|c| c != &'.').collect();
+            // remove potential query params
+            let ext: String = after_dot_rev
+                .chars()
+                .rev()
+                .take_while(|c| c != &'?')
+                .collect();
+
+            let tmp: String = filename
+                .chars()
+                .rev()
+                .skip(after_dot_rev.len() + 1) // after_dot_rev to exclude query params and '+ 1' for the dot
+                .collect();
+
+            let filename_without_extension: String = tmp.chars().rev().collect();
+            (Some(ext), filename_without_extension)
+        } else {
+            (None, filename)
+        }
     }
 }
 
@@ -112,20 +113,11 @@ mod file_link_tests {
         match FileLink::new(url.clone()) {
             Ok(fl) => {
                 assert_eq!(fl.url, url);
-                assert_eq!(fl.file_name, "area51.txt".to_string());
-                assert_eq!(fl.extension, "txt".to_string());
-                assert_eq!(fl.file_name_no_extension, "area51.".to_string());
+                assert_eq!(fl.filename_without_extension, "area51".to_string());
+                assert_eq!(fl.extension, Some("txt".to_string()));
             }
             _ => assert_eq!(true, false),
         }
-    }
-
-    #[test]
-    fn full_path() {
-        let url = "http://www.google.com/area51.txt".to_string();
-        let fl = FileLink::new(url).unwrap();
-        let full_path = fl.full_path("/secret-folder");
-        assert_eq!(full_path, "/secret-folder/area51.txt".to_string())
     }
 
     #[test]
@@ -144,7 +136,23 @@ mod file_link_tests {
     fn no_extension() {
         let url = "http://www.google.com/area51".to_string();
         let fl = FileLink::new(url).unwrap();
-        let full_path = fl.full_path("/secret-folder");
-        assert_eq!(full_path, "/secret-folder/area51.NO_EXT".to_string())
+        assert_eq!(fl.extension, None);
+        assert_eq!(fl.filename_without_extension, "area51");
+    }
+
+    #[test]
+    fn extract_extension_ok() {
+        let (ext, filename) = FileLink::extract_extension_from_filename("area51.txt".to_string());
+        assert_eq!(filename, "area51");
+        assert_eq!(ext, Some("txt".to_string()));
+    }
+
+    #[test]
+    fn extract_extension_with_query_param() {
+        let url =
+            "https://releases.ubuntu.com/21.10/ubuntu-21.10-desktop-amd64.iso?id=123".to_string();
+        let fl = FileLink::new(url).unwrap();
+        assert_eq!(fl.extension, Some("iso".to_string()));
+        assert_eq!(fl.filename_without_extension, "ubuntu-21.10-desktop-amd64");
     }
 }

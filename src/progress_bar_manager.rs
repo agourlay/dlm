@@ -91,7 +91,7 @@ impl ProgressBarManager {
         ProgressBarManager::log_above_progress_bar(&self.main_pb, msg)
     }
 
-    pub fn log_above_progress_bar(pb: &ProgressBar, msg: String) {
+    fn log_above_progress_bar(pb: &ProgressBar, msg: String) {
         pb.println(format!(
             "[{}] {}",
             Local::now().naive_local().format("%Y-%m-%d %H:%M:%S"),

@@ -8,22 +8,34 @@ use tokio::time::{timeout, Duration};
 
 use crate::dlm_error::DlmError;
 use crate::file_link::FileLink;
+use crate::utils::pretty_bytes_size;
 use crate::ProgressBarManager;
+
+const NO_EXTENSION: &str = "NO_EXTENSION_FOUND";
 
 pub async fn download_link(
     raw_link: &str,
     client: &Client,
     output_dir: &str,
-    pb: &ProgressBar,
+    pb_dl: &ProgressBar,
+    pb_manager: &ProgressBarManager,
 ) -> Result<String, DlmError> {
     let file_link = FileLink::new(raw_link.to_string())?;
-    let final_name = &file_link.full_path(output_dir);
-    if Path::new(final_name).exists() {
-        let final_file_size = tfs::File::open(&final_name).await?.metadata().await?.len();
+    // validate file extension, necessary when the URL does not contain clearly the filename (in case of a redirect for instance)
+    let (extension, filename_without_extension) =
+        check_filename_extension(&file_link, client, pb_manager).await?;
+    let filename_with_extension = format!("{}.{}", filename_without_extension, extension);
+    let final_file_path = &format!("{}/{}", output_dir, filename_with_extension);
+    if Path::new(final_file_path).exists() {
+        let final_file_size = tfs::File::open(final_file_path)
+            .await?
+            .metadata()
+            .await?
+            .len();
         let msg = format!(
             "Skipping {} because the file is already completed [{}]",
-            file_link.file_name,
-            pretty_file_size(final_file_size)
+            filename_with_extension,
+            pretty_bytes_size(final_file_size)
         );
         Ok(msg)
     } else {
@@ -36,16 +48,17 @@ pub async fn download_link(
             let (content_length, accept_ranges) =
                 try_hard_to_extract_headers(head_result.headers(), url, client).await?;
             // setup progress bar for the file
-            pb.set_message(ProgressBarManager::message_progress_bar(
-                &file_link.file_name,
+            pb_dl.set_message(ProgressBarManager::message_progress_bar(
+                &filename_with_extension,
             ));
             if let Some(total_size) = content_length {
-                pb.set_length(total_size);
+                pb_dl.set_length(total_size);
             };
 
-            let tmp_name = format!("{}/{}part", output_dir, file_link.file_name_no_extension);
+            let tmp_name = format!("{}/{}.part", output_dir, filename_without_extension);
             let query_range =
-                compute_query_range(pb, content_length, accept_ranges, &tmp_name).await?;
+                compute_query_range(pb_dl, pb_manager, content_length, accept_ranges, &tmp_name)
+                    .await?;
 
             // create/open file.part
             let mut file = match query_range {
@@ -75,15 +88,15 @@ pub async fn download_link(
                 let chunk_timeout = Duration::from_secs(60);
                 while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
                     file.write_all(&chunk).await?;
-                    pb.inc(chunk.len() as u64);
+                    pb_dl.inc(chunk.len() as u64);
                 }
                 let final_file_size = file.metadata().await?.len();
                 // rename part file to final
-                tfs::rename(&tmp_name, &final_name).await?;
+                tfs::rename(&tmp_name, final_file_path).await?;
                 let msg = format!(
                     "Completed {} [{}]",
-                    file_link.file_name,
-                    pretty_file_size(final_file_size)
+                    filename_with_extension,
+                    pretty_bytes_size(final_file_size)
                 );
                 Ok(msg)
             }
@@ -91,58 +104,51 @@ pub async fn download_link(
     }
 }
 
-const KILOBYTE: f64 = 1024.0;
-const MEGABYTE: f64 = KILOBYTE * KILOBYTE;
-const GIGABYTE: f64 = KILOBYTE * MEGABYTE;
-
-fn pretty_file_size(len: u64) -> String {
-    let float_len = len as f64;
-    let (unit, value) = if float_len > GIGABYTE {
-        ("GiB", float_len / GIGABYTE)
-    } else if float_len > MEGABYTE {
-        ("MiB", float_len / MEGABYTE)
-    } else if float_len > KILOBYTE {
-        ("KiB", float_len / KILOBYTE)
-    } else {
-        ("bytes", float_len)
-    };
-    format!("{:.2}{}", value, unit)
-}
-
 async fn try_hard_to_extract_headers(
     head_headers: &HeaderMap,
     url: &str,
     client: &Client,
 ) -> Result<(Option<u64>, Option<String>), DlmError> {
-    let tuple = match content_length(head_headers) {
+    let tuple = match content_length_value(head_headers) {
         Some(0) => {
             // if "content-length": "0" then it is likely the server does not support HEAD, let's try harder with a GET
             let get_result = client.get(url).send().await?;
             let get_headers = get_result.headers();
-            (content_length(get_headers), accept_ranges(get_headers))
+            (
+                content_length_value(get_headers),
+                accept_ranges_value(get_headers),
+            )
         }
-        ct_option @ Some(_) => (ct_option, accept_ranges(head_headers)),
+        ct_option @ Some(_) => (ct_option, accept_ranges_value(head_headers)),
         _ => (None, None),
     };
     Ok(tuple)
 }
 
-fn content_length(headers: &HeaderMap) -> Option<u64> {
+fn content_length_value(headers: &HeaderMap) -> Option<u64> {
     headers
         .get("content-length")
         .and_then(|ct_len| ct_len.to_str().ok())
         .and_then(|ct_len| ct_len.parse().ok())
 }
 
-fn accept_ranges(headers: &HeaderMap) -> Option<String> {
+fn accept_ranges_value(headers: &HeaderMap) -> Option<String> {
     headers
         .get("accept-ranges")
         .and_then(|ct_len| ct_len.to_str().ok())
         .map(|v| v.to_string())
 }
 
+fn content_disposition_value(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("content-disposition")
+        .and_then(|ct_len| ct_len.to_str().ok())
+        .map(|v| v.to_string())
+}
+
 async fn compute_query_range(
-    pb: &ProgressBar,
+    pb_dl: &ProgressBar,
+    pb_manager: &ProgressBarManager,
     content_length: Option<u64>,
     accept_ranges: Option<String>,
     tmp_name: &str,
@@ -152,7 +158,7 @@ async fn compute_query_range(
         let tmp_size = tfs::File::open(&tmp_name).await?.metadata().await?.len();
         match (accept_ranges, content_length) {
             (Some(range), Some(cl)) if range == "bytes" => {
-                pb.set_position(tmp_size);
+                pb_dl.set_position(tmp_size);
                 let range_msg = format!("bytes={}-{}", tmp_size, cl);
                 Ok(Some(range_msg))
             }
@@ -161,7 +167,7 @@ async fn compute_query_range(
                     "Found part file {} with size {} but it will be overridden because the server does not support resuming the download (range bytes)",
                     tmp_name, tmp_size
                 );
-                ProgressBarManager::log_above_progress_bar(pb, log);
+                pb_manager.log_above_progress_bars(log);
                 Ok(None)
             }
         }
@@ -171,10 +177,73 @@ async fn compute_query_range(
                 "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
                 tmp_name
             );
-            ProgressBarManager::log_above_progress_bar(pb, log);
+            pb_manager.log_above_progress_bars(log);
         };
         Ok(None)
     }
+}
+
+async fn check_filename_extension(
+    file_link: &FileLink,
+    client: &Client,
+    pb_manager: &ProgressBarManager,
+) -> Result<(String, String), DlmError> {
+    let url = &file_link.url;
+    let filename_without_extension = file_link.filename_without_extension.to_owned();
+    match &file_link.extension {
+        Some(ext) => Ok((ext.to_owned(), filename_without_extension)),
+        None => {
+            // try get the file name from the HTTP headers
+            let filename_header_value = compute_filename_from_headers(url, client).await?;
+            match filename_header_value {
+                Some(fh) => {
+                    let (ext, filename) = FileLink::extract_extension_from_filename(fh);
+                    match ext {
+                        Some(e) => Ok((e, filename)),
+                        None => {
+                            // no extension extracted from header value
+                            let msg = format!(
+                                "Could not determine file extension based on header {} for {}",
+                                filename, url
+                            );
+                            pb_manager.log_above_progress_bars(msg);
+                            Ok((NO_EXTENSION.to_owned(), filename_without_extension))
+                        }
+                    }
+                }
+                None => {
+                    // no extension found with a HEAD request - use default value
+                    let msg = format!("Could not determine file extension for {}", url);
+                    pb_manager.log_above_progress_bars(msg);
+                    Ok((NO_EXTENSION.to_owned(), filename_without_extension))
+                }
+            }
+        }
+    }
+}
+
+async fn compute_filename_from_headers(
+    url: &str,
+    client: &Client,
+) -> Result<Option<String>, DlmError> {
+    let head_result = client.head(url).send().await?;
+    if !head_result.status().is_success() {
+        let message = format!("{} {}", url, head_result.status());
+        Err(DlmError::ResponseStatusNotSuccess { message })
+    } else {
+        // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition#as_a_response_header_for_the_main_body
+        let content_disposition = content_disposition_value(head_result.headers());
+        Ok(content_disposition.and_then(parse_filename_header))
+    }
+}
+
+fn parse_filename_header(content_disposition: String) -> Option<String> {
+    content_disposition
+        .split("attachment; filename=")
+        .last()
+        .and_then(|s| s.strip_prefix('"'))
+        .and_then(|s| s.strip_suffix('"'))
+        .map(|s| s.to_string())
 }
 
 #[cfg(test)]
@@ -182,20 +251,9 @@ mod downloader_tests {
     use crate::downloader::*;
 
     #[test]
-    fn pretty_file_size_gb() {
-        let size: u64 = 1_200_000_000;
-        assert_eq!(pretty_file_size(size), "1.12GiB");
-    }
-
-    #[test]
-    fn pretty_file_size_mb() {
-        let size: u64 = 1_200_000;
-        assert_eq!(pretty_file_size(size), "1.14MiB");
-    }
-
-    #[test]
-    fn pretty_file_size_kb() {
-        let size: u64 = 1_200;
-        assert_eq!(pretty_file_size(size), "1.17KiB");
+    fn parse_filename_header_ok() {
+        let header_value = "attachment; filename=\"code-stable-x64-1639562789.tar.gz\"";
+        let parsed = parse_filename_header(header_value.to_string());
+        assert_eq!(parsed, Some("code-stable-x64-1639562789.tar.gz".to_owned()));
     }
 }
