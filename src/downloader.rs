@@ -21,9 +21,18 @@ pub async fn download_link(
     pb_manager: &ProgressBarManager,
 ) -> Result<String, DlmError> {
     let file_link = FileLink::new(raw_link.to_string())?;
-    // validate file extension, necessary when the URL does not contain clearly the filename (in case of a redirect for instance)
-    let (extension, filename_without_extension) =
-        check_filename_extension(&file_link, client, pb_manager).await?;
+    let (extension, filename_without_extension) = match file_link.extension {
+        Some(ext) => (ext, file_link.filename_without_extension),
+        None => {
+            fetch_filename_extension(
+                &file_link.url,
+                &file_link.filename_without_extension,
+                client,
+                pb_manager,
+            )
+            .await?
+        }
+    };
     let filename_with_extension = format!("{}.{}", filename_without_extension, extension);
     let final_file_path = &format!("{}/{}", output_dir, filename_with_extension);
     if Path::new(final_file_path).exists() {
@@ -183,41 +192,43 @@ async fn compute_query_range(
     }
 }
 
-async fn check_filename_extension(
-    file_link: &FileLink,
+// necessary when the URL does not contain clearly the filename (in case of a redirect for instance)
+async fn fetch_filename_extension(
+    url: &str,
+    filename_without_extension: &str,
     client: &Client,
     pb_manager: &ProgressBarManager,
 ) -> Result<(String, String), DlmError> {
-    let url = &file_link.url;
-    let filename_without_extension = file_link.filename_without_extension.to_owned();
-    match &file_link.extension {
-        Some(ext) => Ok((ext.to_owned(), filename_without_extension)),
-        None => {
-            // try get the file name from the HTTP headers
-            let filename_header_value = compute_filename_from_headers(url, client).await?;
-            match filename_header_value {
-                Some(fh) => {
-                    let (ext, filename) = FileLink::extract_extension_from_filename(fh);
-                    match ext {
-                        Some(e) => Ok((e, filename)),
-                        None => {
-                            // no extension extracted from header value
-                            let msg = format!(
-                                "Could not determine file extension based on header {} for {}",
-                                filename, url
-                            );
-                            pb_manager.log_above_progress_bars(msg);
-                            Ok((NO_EXTENSION.to_owned(), filename_without_extension))
-                        }
-                    }
-                }
+    // try get the file name from the HTTP headers
+    let filename_header_value = compute_filename_from_headers(url, client).await?;
+    match filename_header_value {
+        Some(fh) => {
+            let (ext, filename) = FileLink::extract_extension_from_filename(fh);
+            match ext {
+                Some(e) => Ok((e, filename)),
                 None => {
-                    // no extension found with a HEAD request - use default value
-                    let msg = format!("Could not determine file extension for {}", url);
+                    // no extension extracted from header value
+                    let msg = format!(
+                        "Could not determine file extension based on header {} for {}",
+                        filename, url
+                    );
                     pb_manager.log_above_progress_bars(msg);
-                    Ok((NO_EXTENSION.to_owned(), filename_without_extension))
+                    Ok((
+                        NO_EXTENSION.to_owned(),
+                        filename_without_extension.to_string(),
+                    ))
                 }
             }
+        }
+        None => {
+            // TODO try again with a client that does not follow redirect and extract a potential `Location` header.
+            // no extension found with a HEAD request - use default value
+            let msg = format!("Could not determine file extension for {}", url);
+            pb_manager.log_above_progress_bars(msg);
+            Ok((
+                NO_EXTENSION.to_owned(),
+                filename_without_extension.to_string(),
+            ))
         }
     }
 }
