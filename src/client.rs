@@ -25,7 +25,7 @@ pub fn make_client(
         _ => client_builder,
     };
 
-    // setup proxy
+    // setup redirect
     let client_builder = if redirect {
         // defaults to 10 redirects
         client_builder.redirect(Policy::default())
