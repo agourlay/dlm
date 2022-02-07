@@ -16,6 +16,7 @@ const NO_EXTENSION: &str = "NO_EXTENSION_FOUND";
 pub async fn download_link(
     raw_link: &str,
     client: &Client,
+    client_no_redirect: &Client,
     output_dir: &str,
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
@@ -28,6 +29,7 @@ pub async fn download_link(
                 &file_link.url,
                 &file_link.filename_without_extension,
                 client,
+                client_no_redirect,
                 pb_manager,
             )
             .await?
@@ -155,6 +157,13 @@ fn content_disposition_value(headers: &HeaderMap) -> Option<String> {
         .map(|v| v.to_string())
 }
 
+fn location_value(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("location")
+        .and_then(|ct_len| ct_len.to_str().ok())
+        .map(|v| v.to_string())
+}
+
 async fn compute_query_range(
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
@@ -197,17 +206,16 @@ async fn fetch_filename_extension(
     url: &str,
     filename_without_extension: &str,
     client: &Client,
+    client_no_redirect: &Client,
     pb_manager: &ProgressBarManager,
 ) -> Result<(String, String), DlmError> {
     // try get the file name from the HTTP headers
-    let filename_header_value = compute_filename_from_headers(url, client).await?;
-    match filename_header_value {
+    match compute_filename_from_disposition_header(url, client).await? {
         Some(fh) => {
             let (ext, filename) = FileLink::extract_extension_from_filename(fh);
             match ext {
                 Some(e) => Ok((e, filename)),
                 None => {
-                    // no extension extracted from header value
                     let msg = format!(
                         "Could not determine file extension based on header {} for {}",
                         filename, url
@@ -221,19 +229,29 @@ async fn fetch_filename_extension(
             }
         }
         None => {
-            // TODO try again with a client that does not follow redirect and extract a potential `Location` header.
-            // no extension found with a HEAD request - use default value
-            let msg = format!("Could not determine file extension for {}", url);
-            pb_manager.log_above_progress_bars(msg);
-            Ok((
-                NO_EXTENSION.to_owned(),
-                filename_without_extension.to_string(),
-            ))
+            // check if it is maybe a redirect
+            match compute_filename_from_location_header(url, client_no_redirect).await? {
+                None => {
+                    let msg = format!("Could not determine file extension for {}", url);
+                    pb_manager.log_above_progress_bars(msg);
+                    Ok((
+                        NO_EXTENSION.to_owned(),
+                        filename_without_extension.to_string(),
+                    ))
+                }
+                Some(fl) => match fl.extension {
+                    Some(ext) => Ok((ext, fl.filename_without_extension)),
+                    None => Ok((
+                        NO_EXTENSION.to_owned(),
+                        fl.filename_without_extension.to_string(),
+                    )),
+                },
+            }
         }
     }
 }
 
-async fn compute_filename_from_headers(
+async fn compute_filename_from_disposition_header(
     url: &str,
     client: &Client,
 ) -> Result<Option<String>, DlmError> {
@@ -255,6 +273,25 @@ fn parse_filename_header(content_disposition: String) -> Option<String> {
         .and_then(|s| s.strip_prefix('"'))
         .and_then(|s| s.strip_suffix('"'))
         .map(|s| s.to_string())
+}
+
+async fn compute_filename_from_location_header(
+    url: &str,
+    client_no_redirect: &Client,
+) -> Result<Option<FileLink>, DlmError> {
+    let head_result = client_no_redirect.head(url).send().await?;
+    if head_result.status().is_redirection() {
+        // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location
+        match location_value(head_result.headers()) {
+            None => Ok(None),
+            Some(location) => {
+                let fl = FileLink::new(location)?;
+                Ok(Some(fl))
+            }
+        }
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 mod args;
+mod client;
 mod dlm_error;
 mod downloader;
 mod file_link;
@@ -7,13 +8,12 @@ mod user_agents;
 mod utils;
 
 use crate::args::{get_args, Arguments};
+use crate::client::make_client;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
 use crate::progress_bar_manager::ProgressBarManager;
 use crate::user_agents::{random_user_agent, UserAgent};
 use futures_util::stream::StreamExt;
-use reqwest::{Client, Proxy};
-use std::time::Duration;
 use tokio::fs as tfs;
 use tokio::io::AsyncBufReadExt;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
@@ -43,26 +43,11 @@ async fn main_result() -> Result<(), DlmError> {
         retry,
     } = get_args()?;
 
-    // setup HTTP client
-    let client_builder = Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .pool_max_idle_per_host(0);
-
-    // setup user-agent
-    let client_builder = match user_agent {
-        Some(UserAgent::CustomUserAgent(ua)) => client_builder.user_agent(ua),
-        Some(UserAgent::RandomUserAgent) => client_builder.user_agent(random_user_agent()),
-        _ => client_builder,
-    };
-
-    // setup proxy
-    let client_builder = match proxy {
-        Some(p) => client_builder.proxy(Proxy::all(p)?),
-        _ => client_builder,
-    };
-
-    let client = client_builder.build()?;
+    // setup HTTP clients
+    let client = make_client(&user_agent, &proxy, true)?;
     let c_ref = &client;
+    let client_no_redirect = make_client(&user_agent, &proxy, false)?;
+    let c_no_redirect_ref = &client_no_redirect;
     let od_ref = &output_dir;
 
     // setup progress bar manager
@@ -104,7 +89,7 @@ async fn main_result() -> Result<(), DlmError> {
 
                     let processed = RetryIf::spawn(
                         retry_strategy,
-                        || download_link(&link, c_ref, od_ref, &dl_pb, pbm_ref),
+                        || download_link(&link, c_ref, c_no_redirect_ref, od_ref, &dl_pb, pbm_ref),
                         |e: &DlmError| retry_handler(e, pbm_ref, &link),
                     )
                     .await;

@@ -155,4 +155,14 @@ mod file_link_tests {
         assert_eq!(fl.extension, Some("iso".to_string()));
         assert_eq!(fl.filename_without_extension, "ubuntu-21.10-desktop-amd64");
     }
+
+    #[test]
+    fn extract_extension_with_query_param_bis() {
+        let url = "https://atom-installer.github.com/v1.58.0/atom-amd64.deb?s=1627025597&ext=.deb"
+            .to_string();
+        let fl = FileLink::new(url).unwrap();
+        assert_eq!(fl.extension, Some("deb".to_string()));
+        // FIXME
+        //assert_eq!(fl.filename_without_extension, "atom-amd64");
+    }
 }
