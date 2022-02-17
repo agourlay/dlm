@@ -2,11 +2,11 @@ use crate::user_agents::UserAgent;
 use crate::user_agents::UserAgent::{CustomUserAgent, RandomUserAgent};
 use crate::DlmError;
 use crate::DlmError::CliArgumentError;
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use std::path::Path;
 
-fn app() -> clap::App<'static> {
-    App::new("dlm")
+fn command() -> clap::Command<'static> {
+    Command::new("dlm")
         .version("0.2.5")
         .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
         .about("Minimal download manager")
@@ -76,8 +76,8 @@ pub struct Arguments {
 }
 
 pub fn get_args() -> Result<Arguments, DlmError> {
-    let app = app();
-    let matches = app.get_matches();
+    let command = command();
+    let matches = command.get_matches();
 
     let max_concurrent_downloads =
         matches
@@ -146,10 +146,10 @@ pub fn get_args() -> Result<Arguments, DlmError> {
 
 #[cfg(test)]
 mod args_tests {
-    use crate::args::app;
+    use crate::args::command;
 
     #[test]
-    fn verify_app() {
-        app().debug_assert();
+    fn verify_command() {
+        command().debug_assert();
     }
 }
