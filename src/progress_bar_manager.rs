@@ -3,7 +3,6 @@ use async_channel::{Receiver, Sender};
 use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::cmp::{min, Ordering};
-use tokio::task::JoinHandle;
 
 const PENDING: &str = "pending";
 
@@ -15,14 +14,13 @@ pub struct ProgressBarManager {
 }
 
 impl ProgressBarManager {
-    pub async fn init(
-        max_concurrent_downloads: usize,
-        main_pb_len: u64,
-    ) -> (JoinHandle<()>, ProgressBarManager) {
+    pub async fn init(max_concurrent_downloads: usize, main_pb_len: u64) -> ProgressBarManager {
         let mp = MultiProgress::new();
 
         // main progress bar
-        let main_style = ProgressStyle::default_bar().template("{bar:133} {pos}/{len}");
+        let main_style = ProgressStyle::default_bar()
+            .template("{bar:133} {pos}/{len}")
+            .expect("templating should not fail");
         let main_pb = mp.add(ProgressBar::new(0));
         main_pb.set_style(main_style);
         main_pb.set_length(main_pb_len);
@@ -39,6 +37,7 @@ impl ProgressBarManager {
 
         let dl_style = ProgressStyle::default_bar()
             .template("{msg} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")
+            .expect("templating should not fail")
             .progress_chars("#>-");
 
         for _ in 0..file_pb_count {
@@ -48,25 +47,18 @@ impl ProgressBarManager {
             tx.send(file_pb).await.expect("channel should not fail");
         }
 
-        // Render MultiProgress bar async. in a dedicated blocking thread
-        let h = tokio::task::spawn_blocking(move || match mp.join_and_clear() {
-            Ok(_) => (),
-            Err(e) => println!("Error while rendering progress bars {}", e),
-        });
-
-        let pbm = ProgressBarManager {
+        ProgressBarManager {
             main_pb,
             file_pb_count,
             rx,
             tx,
-        };
-        (h, pbm)
+        }
     }
 
     pub async fn finish_all(&self) -> Result<(), DlmError> {
         for _ in 0..self.file_pb_count {
             let pb = self.rx.recv().await?;
-            pb.finish();
+            pb.finish_and_clear();
         }
         self.main_pb.finish();
         Ok(())

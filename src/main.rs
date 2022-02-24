@@ -52,8 +52,7 @@ async fn main_result() -> Result<(), DlmError> {
 
     // setup progress bar manager
     let nb_of_lines = count_non_empty_lines(&input_file).await?;
-    let (rendering_handle, pbm) =
-        ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64).await;
+    let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64).await;
     let pbm_ref = &pbm;
 
     // print startup info
@@ -116,7 +115,6 @@ async fn main_result() -> Result<(), DlmError> {
 
     // cleanup phase
     pbm_ref.finish_all().await?;
-    rendering_handle.await?;
     Ok(())
 }
 
