@@ -149,7 +149,6 @@ dependencies = [
  "clap",
  "futures",
  "futures-util",
- "hyper",
  "indicatif",
  "rand",
  "reqwest",

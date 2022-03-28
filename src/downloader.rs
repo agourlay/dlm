@@ -1,5 +1,5 @@
-use hyper::HeaderMap;
 use indicatif::ProgressBar;
+use reqwest::header::HeaderMap;
 use reqwest::Client;
 use std::path::Path;
 use tokio::fs as tfs;
