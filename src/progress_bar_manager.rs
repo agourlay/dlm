@@ -1,7 +1,7 @@
 use crate::DlmError;
 use async_channel::{Receiver, Sender};
 use chrono::Local;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 use std::cmp::{min, Ordering};
 
 const PENDING: &str = "pending";
@@ -16,6 +16,9 @@ pub struct ProgressBarManager {
 impl ProgressBarManager {
     pub async fn init(max_concurrent_downloads: usize, main_pb_len: u64) -> ProgressBarManager {
         let mp = MultiProgress::new();
+        // Refresh terminal 5 times per seconds
+        let draw_target = ProgressDrawTarget::stdout_with_hz(5);
+        mp.set_draw_target(draw_target);
 
         // main progress bar
         let main_style = ProgressStyle::default_bar()
