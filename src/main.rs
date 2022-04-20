@@ -19,6 +19,7 @@ use tokio::io::AsyncBufReadExt;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::RetryIf;
 use tokio_stream::wrappers::LinesStream;
+use crate::DlmError::EmptyInputFile;
 
 #[tokio::main]
 async fn main() {
@@ -43,6 +44,11 @@ async fn main_result() -> Result<(), DlmError> {
         retry,
     } = get_args()?;
 
+    let nb_of_lines = count_non_empty_lines(&input_file).await?;
+    if nb_of_lines == 0 {
+        return Err(EmptyInputFile)
+    }
+
     // setup HTTP clients
     let client = make_client(&user_agent, &proxy, true)?;
     let c_ref = &client;
@@ -51,7 +57,6 @@ async fn main_result() -> Result<(), DlmError> {
     let od_ref = &output_dir;
 
     // setup progress bar manager
-    let nb_of_lines = count_non_empty_lines(&input_file).await?;
     let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64).await;
     let pbm_ref = &pbm;
 
