@@ -13,13 +13,13 @@ use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
 use crate::progress_bar_manager::ProgressBarManager;
 use crate::user_agents::{random_user_agent, UserAgent};
+use crate::DlmError::EmptyInputFile;
 use futures_util::stream::StreamExt;
 use tokio::fs as tfs;
 use tokio::io::AsyncBufReadExt;
 use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::RetryIf;
 use tokio_stream::wrappers::LinesStream;
-use crate::DlmError::EmptyInputFile;
 
 #[tokio::main]
 async fn main() {
@@ -46,7 +46,7 @@ async fn main_result() -> Result<(), DlmError> {
 
     let nb_of_lines = count_non_empty_lines(&input_file).await?;
     if nb_of_lines == 0 {
-        return Err(EmptyInputFile)
+        return Err(EmptyInputFile);
     }
 
     // setup HTTP clients
