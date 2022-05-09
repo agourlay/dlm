@@ -4,6 +4,7 @@ mod dlm_error;
 mod downloader;
 mod file_link;
 mod progress_bar_manager;
+mod retry;
 mod user_agents;
 mod utils;
 
@@ -12,12 +13,12 @@ use crate::client::make_client;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
 use crate::progress_bar_manager::ProgressBarManager;
+use crate::retry::{retry_handler, retry_strategy};
 use crate::user_agents::{random_user_agent, UserAgent};
 use crate::DlmError::EmptyInputFile;
 use futures_util::stream::StreamExt;
 use tokio::fs as tfs;
 use tokio::io::AsyncBufReadExt;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::RetryIf;
 use tokio_stream::wrappers::LinesStream;
 
@@ -87,9 +88,7 @@ async fn main_result() -> Result<(), DlmError> {
                         .expect("claiming progress bar should not fail");
 
                     // exponential backoff retries for network errors
-                    let retry_strategy = ExponentialBackoff::from_millis(1000)
-                        .map(jitter) // add jitter to delays
-                        .take(retry); // limit retries
+                    let retry_strategy = retry_strategy(retry, true);
 
                     let processed = RetryIf::spawn(
                         retry_strategy,
@@ -136,20 +135,4 @@ async fn count_non_empty_lines(input_file: &str) -> Result<i32, DlmError> {
         })
         .await;
     Ok(line_nb)
-}
-
-fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool {
-    let should_retry = is_network_error(e);
-    if should_retry {
-        let msg = format!("Retrying {} after error {:?}", link, e);
-        pbm.log_above_progress_bars(msg)
-    }
-    should_retry
-}
-
-fn is_network_error(e: &DlmError) -> bool {
-    matches!(
-        e,
-        DlmError::ConnectionClosed | DlmError::ResponseBodyError | DlmError::DeadLineElapsedTimeout
-    )
 }
