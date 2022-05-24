@@ -2,14 +2,15 @@ use crate::user_agents::UserAgent;
 use crate::user_agents::UserAgent::{CustomUserAgent, RandomUserAgent};
 use crate::DlmError;
 use crate::DlmError::CliArgumentError;
+use clap::{crate_authors, crate_description, crate_name, crate_version};
 use clap::{Arg, Command};
 use std::path::Path;
 
 fn command() -> clap::Command<'static> {
-    Command::new("dlm")
-        .version("0.2.7")
-        .author("Arnaud Gourlay <arnaud.gourlay@gmail.com>")
-        .about("Minimal download manager")
+    Command::new(crate_name!())
+        .version(crate_version!())
+        .author(crate_authors!("\n"))
+        .about(crate_description!())
         .arg(
             Arg::new("maxConcurrentDownloads")
                 .help("used to limit the number of downloads in flight")
