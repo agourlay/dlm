@@ -1,6 +1,6 @@
 [package]
 name = "dlm"
-version = "0.2.7"
+version = "0.2.8"
 authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 description = "Minimal download manager"
 edition = "2021"
