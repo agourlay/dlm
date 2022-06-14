@@ -88,7 +88,7 @@ async fn main_result() -> Result<(), DlmError> {
                         .expect("claiming progress bar should not fail");
 
                     // exponential backoff retries for network errors
-                    let retry_strategy = retry_strategy(retry, true);
+                    let retry_strategy = retry_strategy(retry);
 
                     let processed = RetryIf::spawn(
                         retry_strategy,
