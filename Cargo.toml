@@ -10,7 +10,7 @@ futures = "0.3.21"
 futures-util = "0.3.21"
 reqwest = "0.11.11"
 tokio-stream = { version = "0.1.9", features = ["io-util"] }
-tokio = { version = "1.20.0", features = ["rt-multi-thread", "fs", "macros"] }
+tokio = { version = "1.20.1", features = ["rt-multi-thread", "fs", "macros"] }
 tokio-retry = "0.3.0"
 async-channel = "1.6.1"
 chrono = "0.4.19"
