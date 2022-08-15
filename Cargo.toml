@@ -6,7 +6,7 @@ description = "Minimal download manager"
 edition = "2021"
 
 [dependencies]
-futures = "0.3.21"
+futures = "0.3.23"
 futures-util = "0.3.21"
 reqwest = "0.11.11"
 tokio-stream = { version = "0.1.9", features = ["io-util"] }
