@@ -6,7 +6,7 @@ use clap::{crate_authors, crate_description, crate_name, crate_version};
 use clap::{Arg, Command};
 use std::path::Path;
 
-fn command() -> clap::Command<'static> {
+fn command() -> Command {
     Command::new(crate_name!())
         .version(crate_version!())
         .author(crate_authors!("\n"))
@@ -16,7 +16,8 @@ fn command() -> clap::Command<'static> {
                 .help("used to limit the number of downloads in flight")
                 .long("maxConcurrentDownloads")
                 .short('M')
-                .takes_value(true)
+                .num_args(1)
+                .value_parser(clap::value_parser!(usize))
                 .required(true),
         )
         .arg(
@@ -24,7 +25,7 @@ fn command() -> clap::Command<'static> {
                 .help("input file with links")
                 .long("inputFile")
                 .short('i')
-                .takes_value(true)
+                .num_args(1)
                 .required(true),
         )
         .arg(
@@ -32,7 +33,7 @@ fn command() -> clap::Command<'static> {
                 .help("output directory for downloads")
                 .long("outputDir")
                 .short('o')
-                .takes_value(true)
+                .num_args(1)
                 .required(true),
         )
         .arg(
@@ -40,20 +41,21 @@ fn command() -> clap::Command<'static> {
                 .help("User-Agent header to be used by the HTTP client")
                 .long("userAgent")
                 .short('U')
-                .takes_value(true)
+                .num_args(1)
                 .required(false),
         )
         .arg(
             Arg::new("randomUserAgent")
                 .help("sets up a random User-Agent header to be used by the HTTP client")
                 .long("randomUserAgent")
-                .required(false),
+                .required(false)
+                .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("proxy")
                 .help("configure the HTTP client to use a proxy")
                 .long("proxy")
-                .takes_value(true)
+                .num_args(1)
                 .required(false),
         )
         .arg(
@@ -62,7 +64,8 @@ fn command() -> clap::Command<'static> {
                 .long("retry")
                 .short('r')
                 .default_value("10")
-                .takes_value(true)
+                .value_parser(clap::value_parser!(usize))
+                .num_args(1)
                 .required(false),
         )
 }
@@ -80,12 +83,9 @@ pub fn get_args() -> Result<Arguments, DlmError> {
     let command = command();
     let matches = command.get_matches();
 
-    let max_concurrent_downloads =
-        matches
-            .value_of_t("maxConcurrentDownloads")
-            .map_err(|_| CliArgumentError {
-                message: "'maxConcurrentDownloads' was not an integer".to_string(),
-            })?;
+    let max_concurrent_downloads: usize = *matches
+        .get_one("maxConcurrentDownloads")
+        .expect("impossible");
 
     if max_concurrent_downloads == 0 {
         return Err(CliArgumentError {
@@ -94,8 +94,9 @@ pub fn get_args() -> Result<Arguments, DlmError> {
     }
 
     let input_file = matches
-        .value_of("inputFile")
+        .get_one::<String>("inputFile")
         .expect("impossible")
+        .trim()
         .to_string();
     if !Path::new(&input_file).is_file() {
         return Err(CliArgumentError {
@@ -104,8 +105,9 @@ pub fn get_args() -> Result<Arguments, DlmError> {
     }
 
     let output_dir = matches
-        .value_of("outputDir")
+        .get_one::<String>("outputDir")
         .expect("impossible")
+        .trim()
         .to_string();
     if !Path::new(&output_dir).is_dir() {
         return Err(CliArgumentError {
@@ -113,27 +115,19 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         });
     }
 
-    let user_agent: Option<UserAgent> = if matches.is_present("userAgent") {
-        Some(CustomUserAgent(
-            matches
-                .value_of("userAgent")
-                .expect("impossible")
-                .to_string(),
-        ))
-    } else if matches.is_present("randomUserAgent") {
-        Some(RandomUserAgent)
-    } else {
-        None
+    let user_agent: Option<UserAgent> = match matches.get_one::<String>("userAgent") {
+        Some(user_agent) => Some(CustomUserAgent(user_agent.to_string())),
+        None if matches.get_flag("randomUserAgent") => Some(RandomUserAgent),
+        _ => None,
     };
 
-    let proxy = if matches.is_present("proxy") {
-        Some(matches.value_of("proxy").expect("impossible").to_string())
-    } else {
-        None
-    };
+    let proxy: Option<String> = matches.get_one::<String>("proxy").cloned();
 
     // safe match because of default value
-    let retry = matches.value_of_t("retry")?;
+    let retry = matches
+        .get_one::<usize>("retry")
+        .cloned()
+        .expect("impossible");
 
     Ok(Arguments {
         input_file,
