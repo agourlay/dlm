@@ -186,6 +186,7 @@ async fn compute_query_range(
                     tmp_name, tmp_size
                 );
                 pb_manager.log_above_progress_bars(log);
+                pb_dl.set_position(0);
                 Ok(None)
             }
         }
