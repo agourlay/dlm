@@ -14,7 +14,7 @@ tokio = { version = "1.25.0", features = ["rt-multi-thread", "fs", "macros"] }
 tokio-retry = "0.3.0"
 async-channel = "1.8.0"
 chrono = "0.4.23"
-clap = { version = "4.1.7", features = ["cargo"] }
+clap = { version = "4.1.8", features = ["cargo"] }
 indicatif = "0.17.3"
 thiserror = "1.0.38"
 rand = "0.8.5"
