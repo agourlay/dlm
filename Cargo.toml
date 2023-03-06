@@ -16,5 +16,5 @@ async-channel = "1.8.0"
 chrono = "0.4.23"
 clap = { version = "4.1.8", features = ["cargo"] }
 indicatif = "0.17.3"
-thiserror = "1.0.38"
+thiserror = "1.0.39"
 rand = "0.8.5"
