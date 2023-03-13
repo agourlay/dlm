@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3.26"
-futures-util = "0.3.21"
+futures-util = "0.3.27"
 reqwest = { version = "0.11.14", features = ["gzip"] }
 tokio-stream = { version = "0.1.12", features = ["io-util"] }
 tokio = { version = "1.26.0", features = ["rt-multi-thread", "fs", "macros"] }
