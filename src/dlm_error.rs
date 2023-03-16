@@ -14,8 +14,8 @@ pub enum DlmError {
     ResponseBodyError,
     #[error("deadline elapsed timeout")]
     DeadLineElapsedTimeout,
-    #[error("response status not success - {message:?}")]
-    ResponseStatusNotSuccess { message: String },
+    #[error("response status not success - {status_code:?}")]
+    ResponseStatusNotSuccess { status_code: String },
     #[error("URL decode error - {message:?}")]
     UrlDecodeError { message: String },
     #[error("standard I/O error - {e}")]

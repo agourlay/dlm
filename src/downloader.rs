@@ -53,8 +53,8 @@ pub async fn download_link(
         let url = file_link.url.as_str();
         let head_result = client.head(url).send().await?;
         if !head_result.status().is_success() {
-            let message = format!("{} {}", url, head_result.status());
-            Err(DlmError::ResponseStatusNotSuccess { message })
+            let status_code = format!("{}", head_result.status());
+            Err(DlmError::ResponseStatusNotSuccess { status_code })
         } else {
             let (content_length, accept_ranges) =
                 try_hard_to_extract_headers(head_result.headers(), url, client).await?;
@@ -92,8 +92,8 @@ pub async fn download_link(
             // initiate file download
             let mut dl_response = request.send().await?;
             if !dl_response.status().is_success() {
-                let message = format!("{} {}", url, dl_response.status());
-                Err(DlmError::ResponseStatusNotSuccess { message })
+                let status_code = format!("{}", head_result.status());
+                Err(DlmError::ResponseStatusNotSuccess { status_code })
             } else {
                 // incremental save chunk by chunk into part file
                 let chunk_timeout = Duration::from_secs(60);
@@ -258,8 +258,8 @@ async fn compute_filename_from_disposition_header(
 ) -> Result<Option<String>, DlmError> {
     let head_result = client.head(url).send().await?;
     if !head_result.status().is_success() {
-        let message = format!("{} {}", url, head_result.status());
-        Err(DlmError::ResponseStatusNotSuccess { message })
+        let status_code = format!("{}", head_result.status());
+        Err(DlmError::ResponseStatusNotSuccess { status_code })
     } else {
         // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition#as_a_response_header_for_the_main_body
         let content_disposition = content_disposition_value(head_result.headers());
