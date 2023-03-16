@@ -43,6 +43,7 @@ async fn main_result() -> Result<(), DlmError> {
         user_agent,
         proxy,
         retry,
+        connection_timeout_secs,
     } = get_args()?;
 
     let nb_of_lines = count_non_empty_lines(&input_file).await?;
@@ -51,9 +52,9 @@ async fn main_result() -> Result<(), DlmError> {
     }
 
     // setup HTTP clients
-    let client = make_client(&user_agent, &proxy, true)?;
+    let client = make_client(&user_agent, &proxy, true, connection_timeout_secs)?;
     let c_ref = &client;
-    let client_no_redirect = make_client(&user_agent, &proxy, false)?;
+    let client_no_redirect = make_client(&user_agent, &proxy, false, connection_timeout_secs)?;
     let c_no_redirect_ref = &client_no_redirect;
     let od_ref = &output_dir;
 

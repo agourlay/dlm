@@ -68,6 +68,15 @@ fn command() -> Command {
                 .num_args(1)
                 .required(false),
         )
+        .arg(
+            Arg::new("connectionTimeoutSecs")
+                .help("configure connection timeout in seconds for the HTTP client")
+                .long("connectionTimeoutSecs")
+                .default_value("10")
+                .value_parser(clap::value_parser!(usize))
+                .num_args(1)
+                .required(false),
+        )
 }
 
 pub struct Arguments {
@@ -77,6 +86,7 @@ pub struct Arguments {
     pub user_agent: Option<UserAgent>,
     pub proxy: Option<String>,
     pub retry: usize,
+    pub connection_timeout_secs: usize,
 }
 
 pub fn get_args() -> Result<Arguments, DlmError> {
@@ -129,6 +139,12 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         .cloned()
         .expect("impossible");
 
+    // safe match because of default value
+    let connection_timeout_secs = matches
+        .get_one::<usize>("connectionTimeoutSecs")
+        .cloned()
+        .expect("impossible");
+
     Ok(Arguments {
         input_file,
         max_concurrent_downloads,
@@ -136,6 +152,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         user_agent,
         proxy,
         retry,
+        connection_timeout_secs,
     })
 }
 

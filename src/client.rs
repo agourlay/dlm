@@ -7,8 +7,9 @@ pub fn make_client(
     user_agent: &Option<UserAgent>,
     proxy: &Option<String>,
     redirect: bool,
+    connection_timeout_sec: usize,
 ) -> reqwest::Result<Client> {
-    let client_builder = Client::builder().connect_timeout(Duration::from_secs(10));
+    let client_builder = Client::builder().connect_timeout(Duration::from_secs(connection_timeout_sec as u64));
 
     // setup user-agent
     let client_builder = match user_agent {

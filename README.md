@@ -33,10 +33,12 @@ Options:
           configure the HTTP client to use a proxy
   -r, --retry <retry>
           configure the number of retries in case of network error [default: 10]
+      --connectionTimeoutSecs <connectionTimeoutSecs>
+          configure connection timeout in seconds for the HTTP client [default: 10]
   -h, --help
-          Print help information
+          Print help
   -V, --version
-          Print version information
+          Print version
 
 ```
 
