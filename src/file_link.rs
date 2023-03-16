@@ -93,13 +93,12 @@ fn url_decode(data: &str) -> Result<String, DlmError> {
 
 #[cfg(test)]
 mod file_link_tests {
-    use crate::dlm_error::DlmError;
     use crate::file_link::*;
 
     #[test]
     fn no_empty_string() {
         match FileLink::new("".to_string()) {
-            Err(DlmError::Other { message }) => assert_eq!(
+            Err(Other { message }) => assert_eq!(
                 message,
                 "FileLink cannot be built from an empty URL".to_string()
             ),
@@ -124,7 +123,7 @@ mod file_link_tests {
     fn trailing_slash() {
         let url = "http://www.google.com/area51/".to_string();
         match FileLink::new(url) {
-            Err(DlmError::Other { message }) => assert_eq!(
+            Err(Other { message }) => assert_eq!(
                 message,
                 "FileLink cannot be built with an invalid extension 'http://www.google.com/area51/'".to_string()
             ),
