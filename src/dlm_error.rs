@@ -4,7 +4,7 @@ use tokio::time::error::Elapsed;
 
 #[derive(Error, Debug)]
 pub enum DlmError {
-    #[error("The input file is empty")]
+    #[error("the input file is empty")]
     EmptyInputFile,
     #[error("connection closed")]
     ConnectionClosed,
