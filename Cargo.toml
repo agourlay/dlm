@@ -6,8 +6,8 @@ description = "Minimal download manager"
 edition = "2021"
 
 [dependencies]
-futures = "0.3.27"
-futures-util = "0.3.21"
+futures = "0.3.28"
+futures-util = "0.3.28"
 reqwest = { version = "0.11.16", features = ["gzip"] }
 tokio-stream = { version = "0.1.12", features = ["io-util"] }
 tokio = { version = "1.27.0", features = ["rt-multi-thread", "fs", "macros"] }
