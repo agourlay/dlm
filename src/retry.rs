@@ -23,7 +23,10 @@ pub fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool
 fn is_network_error(e: &DlmError) -> bool {
     matches!(
         e,
-        DlmError::ConnectionClosed | DlmError::ResponseBodyError | DlmError::DeadLineElapsedTimeout
+        DlmError::ConnectionClosed
+            | DlmError::ConnectionTimeout
+            | DlmError::ResponseBodyError
+            | DlmError::DeadLineElapsedTimeout
     )
 }
 
