@@ -17,6 +17,7 @@ pub async fn download_link(
     raw_link: &str,
     client: &Client,
     client_no_redirect: &Client,
+    connection_timeout_secs: usize,
     output_dir: &str,
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
@@ -96,7 +97,7 @@ pub async fn download_link(
                 Err(DlmError::ResponseStatusNotSuccess { status_code })
             } else {
                 // incremental save chunk by chunk into part file
-                let chunk_timeout = Duration::from_secs(60);
+                let chunk_timeout = Duration::from_secs(connection_timeout_secs as u64);
                 while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
                     file.write_all(&chunk).await?;
                     pb_dl.inc(chunk.len() as u64);

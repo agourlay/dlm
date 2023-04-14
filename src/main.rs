@@ -93,7 +93,17 @@ async fn main_result() -> Result<(), DlmError> {
 
                     let processed = RetryIf::spawn(
                         retry_strategy,
-                        || download_link(&link, c_ref, c_no_redirect_ref, od_ref, &dl_pb, pbm_ref),
+                        || {
+                            download_link(
+                                &link,
+                                c_ref,
+                                c_no_redirect_ref,
+                                connection_timeout_secs,
+                                od_ref,
+                                &dl_pb,
+                                pbm_ref,
+                            )
+                        },
                         |e: &DlmError| retry_handler(e, pbm_ref, &link),
                     )
                     .await;
