@@ -234,7 +234,10 @@ async fn fetch_filename_extension(
             // check if it is maybe a redirect
             match compute_filename_from_location_header(url, client_no_redirect).await? {
                 None => {
-                    let msg = format!("Could not determine file extension for {}", url);
+                    let msg = format!(
+                        "Using placeholder file extension as it could not be determined for {}",
+                        url
+                    );
                     pb_manager.log_above_progress_bars(msg);
                     Ok((
                         NO_EXTENSION.to_owned(),

@@ -62,7 +62,11 @@ impl FileLink {
             let filename_without_extension: String = tmp.chars().rev().collect();
             (Some(ext), filename_without_extension)
         } else {
-            (None, filename)
+            // no extension found, the file name will be used
+            // sanitize as it contains query params
+            // which are not allowed in filenames on some OS
+            let sanitized = filename.replace(['?', '&'], "-");
+            (None, sanitized)
         }
     }
 }
@@ -108,7 +112,7 @@ mod file_link_tests {
 
     #[test]
     fn happy_case() {
-        let url = "http://www.google.com/area51.txt".to_string();
+        let url = "https://www.google.com/area51.txt".to_string();
         match FileLink::new(url.clone()) {
             Ok(fl) => {
                 assert_eq!(fl.url, url);
@@ -121,11 +125,11 @@ mod file_link_tests {
 
     #[test]
     fn trailing_slash() {
-        let url = "http://www.google.com/area51/".to_string();
+        let url = "https://www.google.com/area51/".to_string();
         match FileLink::new(url) {
             Err(Other { message }) => assert_eq!(
                 message,
-                "FileLink cannot be built with an invalid extension 'http://www.google.com/area51/'".to_string()
+                "FileLink cannot be built with an invalid extension 'https://www.google.com/area51/'".to_string()
             ),
             _ => assert_eq!(true, false),
         }
@@ -133,10 +137,21 @@ mod file_link_tests {
 
     #[test]
     fn no_extension() {
-        let url = "http://www.google.com/area51".to_string();
+        let url = "https://www.google.com/area51".to_string();
         let fl = FileLink::new(url).unwrap();
         assert_eq!(fl.extension, None);
         assert_eq!(fl.filename_without_extension, "area51");
+    }
+
+    #[test]
+    fn no_extension_use_query_params() {
+        let url = "https://oeis.org/search?q=id:A000001&fmt=json".to_string();
+        let fl = FileLink::new(url).unwrap();
+        assert_eq!(fl.extension, None);
+        assert_eq!(
+            fl.filename_without_extension,
+            "search-q=id:A000001-fmt=json"
+        );
     }
 
     #[test]
