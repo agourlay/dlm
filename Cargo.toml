@@ -12,7 +12,7 @@ reqwest = { version = "0.11.24", default-features = false, features = ["gzip", "
 tokio-stream = { version = "0.1.14", features = ["io-util"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "fs", "macros"] }
 tokio-retry = "0.3.0"
-async-channel = "2.1.1"
+async-channel = "2.2.0"
 chrono = "0.4.33"
 clap = { version = "4.5.0", features = ["cargo"] }
 indicatif = "0.17.7"
