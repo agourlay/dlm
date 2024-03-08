@@ -3,6 +3,7 @@ name = "dlm"
 version = "0.3.7"
 authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 description = "Minimal download manager"
+repository = "https://github.com/agourlay/dlm"
 license = "Apache-2.0"
 readme = "README.md"
 categories = ["command-line-utilities"]
