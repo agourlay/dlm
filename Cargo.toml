@@ -3,6 +3,10 @@ name = "dlm"
 version = "0.3.6"
 authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 description = "Minimal download manager"
+license = "Apache-2.0"
+readme = "README.md"
+categories = ["command-line-utilities"]
+keywords = ["cli", "http", "download", "download-manager"]
 edition = "2021"
 
 [dependencies]
