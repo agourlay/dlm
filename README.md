@@ -1,9 +1,11 @@
 # dlm
-[![Build](https://github.com/agourlay/dlm/actions/workflows/ci.yml/badge.svg)](https://github.com/agourlay/dlm/actions/workflows/ci.yml)
+
+[![Build status](https://github.com/agourlay/dlm/actions/workflows/ci.yml/badge.svg)](https://github.com/agourlay/dlm/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/dlm.svg)](https://crates.io/crates/dlm)
 
 A minimal HTTP download manager that works just fine.
 
-## features
+## Features
 
 - read URLs from a text file (one entry per line)
 - control maximum number of concurrent downloads
@@ -46,4 +48,18 @@ Example:
 
 ```
 ./dlm --inputFile ~/dlm/links.txt --outputDir ~/dlm/output --maxConcurrentDownloads 2
+```
+
+## Installation
+
+### Releases
+
+Using the provided binaries in https://github.com/agourlay/dlm/releases
+
+### Crates.io
+
+Using Cargo via [crates.io](https://crates.io/crates/dlm).
+
+```bash
+cargo install dlm
 ```
