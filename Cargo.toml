@@ -13,7 +13,7 @@ edition = "2021"
 [dependencies]
 futures = "0.3.30"
 futures-util = "0.3.30"
-reqwest = { version = "0.12.1", default-features = false, features = ["http2", "gzip", "rustls-tls"] }
+reqwest = { version = "0.12.2", default-features = false, features = ["http2", "gzip", "rustls-tls"] }
 tokio-stream = { version = "0.1.15", features = ["io-util"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "fs", "macros"] }
 tokio-retry = "0.3.0"
