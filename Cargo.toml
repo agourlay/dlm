@@ -18,7 +18,7 @@ tokio-stream = { version = "0.1.15", features = ["io-util"] }
 tokio = { version = "1.36.0", features = ["rt-multi-thread", "fs", "macros"] }
 tokio-retry = "0.3.0"
 async-channel = "2.2.0"
-chrono = "0.4.35"
+chrono = "0.4.37"
 clap = { version = "4.5.4", features = ["cargo"] }
 indicatif = "0.17.8"
 thiserror = "1.0.58"
