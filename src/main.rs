@@ -56,7 +56,11 @@ async fn main_result() -> Result<(), DlmError> {
     let c_ref = &client;
     let client_no_redirect = make_client(&user_agent, &proxy, false, connection_timeout_secs)?;
     let c_no_redirect_ref = &client_no_redirect;
-    let od_ref = &output_dir;
+    // trim trailing slash if any
+    let od_ref = &output_dir
+        .strip_suffix('/')
+        .unwrap_or(&output_dir)
+        .to_string();
 
     // setup progress bar manager
     let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64).await;
