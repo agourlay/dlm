@@ -138,20 +138,22 @@ mod file_link_tests {
     #[test]
     fn no_extension() {
         let url = "https://www.google.com/area51".to_string();
-        let fl = FileLink::new(url).unwrap();
+        let fl = FileLink::new(url.clone()).unwrap();
         assert_eq!(fl.extension, None);
         assert_eq!(fl.filename_without_extension, "area51");
+        assert_eq!(fl.url, url);
     }
 
     #[test]
     fn no_extension_use_query_params() {
         let url = "https://oeis.org/search?q=id:A000001&fmt=json".to_string();
-        let fl = FileLink::new(url).unwrap();
+        let fl = FileLink::new(url.clone()).unwrap();
         assert_eq!(fl.extension, None);
         assert_eq!(
             fl.filename_without_extension,
             "search-q=id:A000001-fmt=json"
         );
+        assert_eq!(fl.url, url);
     }
 
     #[test]
@@ -165,17 +167,19 @@ mod file_link_tests {
     fn extract_extension_with_query_param() {
         let url =
             "https://releases.ubuntu.com/21.10/ubuntu-21.10-desktop-amd64.iso?id=123".to_string();
-        let fl = FileLink::new(url).unwrap();
+        let fl = FileLink::new(url.clone()).unwrap();
         assert_eq!(fl.extension, Some("iso".to_string()));
         assert_eq!(fl.filename_without_extension, "ubuntu-21.10-desktop-amd64");
+        assert_eq!(fl.url, url);
     }
 
     #[test]
     fn extract_extension_with_query_param_bis() {
         let url = "https://atom-installer.github.com/v1.58.0/atom-amd64.deb?s=1627025597&ext=.deb"
             .to_string();
-        let fl = FileLink::new(url).unwrap();
+        let fl = FileLink::new(url.clone()).unwrap();
         assert_eq!(fl.extension, Some("deb".to_string()));
+        assert_eq!(fl.url, url);
         // FIXME
         //assert_eq!(fl.filename_without_extension, "atom-amd64");
     }
