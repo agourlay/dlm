@@ -21,6 +21,7 @@ pub async fn download_link(
     output_dir: &str,
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
+    accept_header: &Option<String>,
 ) -> Result<String, DlmError> {
     let file_link = FileLink::new(raw_link.to_string())?;
     let (extension, filename_without_extension) = match file_link.extension {
@@ -88,6 +89,10 @@ pub async fn download_link(
             let mut request = client.get(url);
             if let Some(range) = query_range {
                 request = request.header("Range", range)
+            }
+
+            if let Some(accept) = accept_header {
+                request = request.header("Accept", accept)
             }
 
             // initiate file download

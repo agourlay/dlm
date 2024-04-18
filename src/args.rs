@@ -77,6 +77,14 @@ fn command() -> Command {
                 .num_args(1)
                 .required(false),
         )
+        .arg(
+            Arg::new("accept")
+                .help("Accept header to be used by the HTTP client request")
+                .long("accept")
+                .short('A')
+                .num_args(1)
+                .required(false),
+        )
 }
 
 pub struct Arguments {
@@ -87,6 +95,7 @@ pub struct Arguments {
     pub proxy: Option<String>,
     pub retry: usize,
     pub connection_timeout_secs: usize,
+    pub accept: Option<String>,
 }
 
 pub fn get_args() -> Result<Arguments, DlmError> {
@@ -145,6 +154,8 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         .cloned()
         .expect("impossible");
 
+    let accept = matches.get_one::<String>("accept").cloned();
+
     Ok(Arguments {
         input_file,
         max_concurrent_downloads,
@@ -153,6 +164,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         proxy,
         retry,
         connection_timeout_secs,
+        accept,
     })
 }
 

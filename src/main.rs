@@ -44,6 +44,7 @@ async fn main_result() -> Result<(), DlmError> {
         proxy,
         retry,
         connection_timeout_secs,
+        accept,
     } = get_args()?;
 
     let nb_of_lines = count_non_empty_lines(&input_file).await?;
@@ -56,6 +57,7 @@ async fn main_result() -> Result<(), DlmError> {
     let c_ref = &client;
     let client_no_redirect = make_client(&user_agent, &proxy, false, connection_timeout_secs)?;
     let c_no_redirect_ref = &client_no_redirect;
+    let accept_ref = &accept;
     // trim trailing slash if any
     let od_ref = &output_dir
         .strip_suffix('/')
@@ -106,6 +108,7 @@ async fn main_result() -> Result<(), DlmError> {
                                 od_ref,
                                 &dl_pb,
                                 pbm_ref,
+                                accept_ref,
                             )
                         },
                         |e: &DlmError| retry_handler(e, pbm_ref, &link),
