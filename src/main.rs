@@ -19,10 +19,9 @@ use crate::DlmError::EmptyInputFile;
 use futures_util::stream::StreamExt;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tokio::fs as tfs;
 use tokio::io::AsyncBufReadExt;
-use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::broadcast;
+use tokio::{fs as tfs, signal};
 use tokio_retry::RetryIf;
 use tokio_stream::wrappers::LinesStream;
 
@@ -85,14 +84,16 @@ async fn main_result() -> Result<(), DlmError> {
     let (stop_sender, mut rx_stop_stream) = broadcast::channel(1);
     let stop_sender_arc = Arc::new(stop_sender);
     let stop_sender_signal = stop_sender_arc.clone();
-    let mut ctrl_c_stream = signal(SignalKind::interrupt())?;
     let stopped_flag = Arc::new(AtomicBool::new(false));
     let stopped_flag_sender = stopped_flag.clone();
     let stopped_flag_dl = &stopped_flag.clone();
     let signal_task_handler = tokio::spawn(async move {
         let mut counter = 0;
         // catch chain of interrupt signals
-        while ctrl_c_stream.recv().await.is_some() {
+        loop {
+            signal::ctrl_c()
+                .await
+                .expect("ctrl-c signal should not fail");
             stopped_flag_sender.store(true, std::sync::atomic::Ordering::Relaxed);
             stop_sender_signal
                 .send(())
