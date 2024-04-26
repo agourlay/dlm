@@ -81,7 +81,7 @@ pub async fn download_link(
                 pb_dl.set_length(total_size);
             };
 
-            let tmp_name = format!("{}/{}.part", output_dir, filename_without_extension);
+            let tmp_name = format!("{}/{}.part", output_dir, filename_with_extension);
             let query_range =
                 compute_query_range(pb_dl, pb_manager, content_length, accept_ranges, &tmp_name)
                     .await?;
