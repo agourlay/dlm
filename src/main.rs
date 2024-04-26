@@ -17,8 +17,12 @@ use crate::retry::{retry_handler, retry_strategy};
 use crate::user_agents::{random_user_agent, UserAgent};
 use crate::DlmError::EmptyInputFile;
 use futures_util::stream::StreamExt;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tokio::fs as tfs;
 use tokio::io::AsyncBufReadExt;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::broadcast;
 use tokio_retry::RetryIf;
 use tokio_stream::wrappers::LinesStream;
 
@@ -75,15 +79,44 @@ async fn main_result() -> Result<(), DlmError> {
     let msg_count = format!("Found {} URLs in input file {}", nb_of_lines, input_file);
     pbm.log_above_progress_bars(msg_count);
 
+    // setup interruption signal handler
+    let (stop_sender, mut rx_stop_stream) = broadcast::channel(1);
+    let stop_sender_arc = Arc::new(stop_sender);
+    let stop_sender_signal = stop_sender_arc.clone();
+    let mut ctrl_c_stream = signal(SignalKind::interrupt())?;
+    let stopped_flag = Arc::new(AtomicBool::new(false));
+    let stopped_flag_sender = stopped_flag.clone();
+    let stopped_flag_dl = &stopped_flag.clone();
+    let signal_task_handler = tokio::spawn(async move {
+        let mut counter = 0;
+        // catch chain of interrupt signals
+        while ctrl_c_stream.recv().await.is_some() {
+            stopped_flag_sender.store(true, std::sync::atomic::Ordering::Relaxed);
+            stop_sender_signal
+                .send(())
+                .expect("sending stop signal should not fail");
+            counter += 1;
+            if counter > 1 {
+                eprintln!("Received multiple interrupt signals - something is stuck");
+            }
+        }
+    });
+
     // start streaming lines from file
     let file = tfs::File::open(input_file).await?;
     let file_reader = tokio::io::BufReader::new(file);
     let line_stream = LinesStream::new(file_reader.lines());
+    let stop_sender_ref_for_dls = &stop_sender_arc;
     line_stream
+        .take_until(rx_stop_stream.recv()) // stop stream on signal
         .for_each_concurrent(max_concurrent_downloads, |link_res| async move {
+            // do not start new downloads if the program is stopped
+            if stopped_flag_dl.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
             let message = match link_res {
-                Err(e) => format!("Error with links iterator {}", e),
-                Ok(link) if link.trim().is_empty() => "Skipping empty line".to_string(),
+                Err(e) => Some(format!("Error with links iterator {}", e)),
+                Ok(link) if link.trim().is_empty() => Some("Skipping empty line".to_string()),
                 Ok(link) => {
                     // claim a progress bar for the upcoming download
                     let dl_pb = pbm_ref
@@ -104,6 +137,7 @@ async fn main_result() -> Result<(), DlmError> {
                                 c_no_redirect_ref,
                                 connection_timeout_secs,
                                 od_ref,
+                                stop_sender_ref_for_dls,
                                 &dl_pb,
                                 pbm_ref,
                             )
@@ -122,19 +156,31 @@ async fn main_result() -> Result<(), DlmError> {
 
                     // extract result
                     match processed {
-                        Ok(info) => info,
-                        Err(e) => format!("Unrecoverable error while processing {}: {}", link, e),
+                        Ok(info) => Some(info),
+                        Err(DlmError::ProgramInterrupted) => None, // no logs on interrupt
+                        Err(e) => Some(format!(
+                            "Unrecoverable error while processing {}: {}",
+                            link, e
+                        )),
                     }
                 }
             };
-            pbm_ref.log_above_progress_bars(message);
-            pbm_ref.increment_global_progress();
+            if let Some(message) = message {
+                pbm_ref.log_above_progress_bars(message);
+                pbm_ref.increment_global_progress();
+            }
         })
         .await;
 
-    // cleanup phase
-    pbm_ref.finish_all().await?;
-    Ok(())
+    // stop signal handling
+    signal_task_handler.abort();
+    if stopped_flag.load(std::sync::atomic::Ordering::Relaxed) {
+        Err(DlmError::ProgramInterrupted)
+    } else {
+        // cleanup phase
+        pbm_ref.finish_all().await?;
+        Ok(())
+    }
 }
 
 async fn count_non_empty_lines(input_file: &str) -> Result<i32, DlmError> {

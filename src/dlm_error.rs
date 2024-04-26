@@ -28,6 +28,8 @@ pub enum DlmError {
     CliArgumentError { message: String },
     #[error("CLI argument error ({e})")]
     ClapError { e: clap::Error },
+    #[error("Program interrupted")]
+    ProgramInterrupted,
     #[error("other error - {message:?}")]
     Other { message: String },
 }

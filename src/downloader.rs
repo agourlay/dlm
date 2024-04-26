@@ -2,9 +2,10 @@ use indicatif::ProgressBar;
 use reqwest::header::HeaderMap;
 use reqwest::Client;
 use std::path::Path;
-use tokio::fs as tfs;
 use tokio::io::AsyncWriteExt;
+use tokio::sync::broadcast;
 use tokio::time::{timeout, Duration};
+use tokio::{fs as tfs, select};
 
 use crate::dlm_error::DlmError;
 use crate::file_link::FileLink;
@@ -13,15 +14,22 @@ use crate::ProgressBarManager;
 
 const NO_EXTENSION: &str = "NO_EXTENSION_FOUND";
 
+// TODO consider using a dedicated struct for the download link function
+#[allow(clippy::too_many_arguments)]
 pub async fn download_link(
     raw_link: &str,
     client: &Client,
     client_no_redirect: &Client,
     connection_timeout_secs: usize,
     output_dir: &str,
+    broadcast_handle: &broadcast::Sender<()>,
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
 ) -> Result<String, DlmError> {
+    // TODO extract downloader in dedicated task with own receiver because the signal could have been sent before the subscription
+    // generate new subscription to stop signal
+    let mut stop_receiver = broadcast_handle.subscribe();
+
     let file_link = FileLink::new(raw_link.to_string())?;
     let (extension, filename_without_extension) = match file_link.extension {
         Some(ext) => (ext, file_link.filename_without_extension),
@@ -98,9 +106,28 @@ pub async fn download_link(
             } else {
                 // incremental save chunk by chunk into part file
                 let chunk_timeout = Duration::from_secs(connection_timeout_secs as u64);
-                while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
-                    file.write_all(&chunk).await?;
-                    pb_dl.inc(chunk.len() as u64);
+                loop {
+                    // select between stop signal and chunk download
+                    select! {
+                        Ok(_) = stop_receiver.recv() => {
+                            file.flush().await?;
+                            return Err(DlmError::ProgramInterrupted);
+                        }
+                        chunk = timeout(chunk_timeout, dl_response.chunk()) => {
+                            // unpack chunk
+                            let chunk = chunk??;
+                            if let Some(chunk) = chunk {
+                                file.write_all(&chunk).await?;
+                                file.flush().await?;
+                                pb_dl.inc(chunk.len() as u64);
+                            } else {
+                                // end of download
+                                // final flush
+                                file.flush().await?;
+                                break;
+                            }
+                        }
+                    }
                 }
                 let final_file_size = file.metadata().await?.len();
                 // rename part file to final

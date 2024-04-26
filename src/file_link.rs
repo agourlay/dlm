@@ -183,4 +183,14 @@ mod file_link_tests {
         // FIXME
         //assert_eq!(fl.filename_without_extension, "atom-amd64");
     }
+
+    #[test]
+    fn extract_extension_with_parts() {
+        let url = "https://www.google.com/area51/alien-archive.tar.00".to_string();
+        let fl = FileLink::new(url.clone()).unwrap();
+        assert_eq!(fl.extension, Some("00".to_string()));
+        // TODO fix this - should be alien-archive.tar.00 or parts will collide on tmp file
+        assert_eq!(fl.filename_without_extension, "alien-archive.tar");
+        assert_eq!(fl.url, url);
+    }
 }
