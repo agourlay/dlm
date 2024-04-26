@@ -53,7 +53,12 @@ pub async fn download_link(
         Ok(msg)
     } else {
         let url = file_link.url.as_str();
-        let head_result = client.head(url).send().await?;
+        let mut head_request = client.head(url);
+        if let Some(accept) = accept_header {
+            head_request = head_request.header("Accept", accept);
+        }
+
+        let head_result = head_request.send().await?;
         if !head_result.status().is_success() {
             let status_code = format!("{}", head_result.status());
             Err(DlmError::ResponseStatusNotSuccess { status_code })
