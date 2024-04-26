@@ -25,6 +25,7 @@ pub async fn download_link(
     broadcast_handle: &broadcast::Sender<()>,
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
+    accept_header: &Option<String>,
 ) -> Result<String, DlmError> {
     // TODO extract downloader in dedicated task with own receiver because the signal could have been sent before the subscription
     // generate new subscription to stop signal
@@ -60,7 +61,12 @@ pub async fn download_link(
         Ok(msg)
     } else {
         let url = file_link.url.as_str();
-        let head_result = client.head(url).send().await?;
+        let mut head_request = client.head(url);
+        if let Some(accept) = accept_header {
+            head_request = head_request.header("Accept", accept);
+        }
+
+        let head_result = head_request.send().await?;
         if !head_result.status().is_success() {
             let status_code = format!("{}", head_result.status());
             Err(DlmError::ResponseStatusNotSuccess { status_code })
@@ -96,6 +102,10 @@ pub async fn download_link(
             let mut request = client.get(url);
             if let Some(range) = query_range {
                 request = request.header("Range", range)
+            }
+
+            if let Some(accept) = accept_header {
+                request = request.header("Accept", accept)
             }
 
             // initiate file download
