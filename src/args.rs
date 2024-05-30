@@ -145,13 +145,13 @@ pub fn get_args() -> Result<Arguments, DlmError> {
     // safe match because of default value
     let retry = matches
         .get_one::<usize>("retry")
-        .cloned()
+        .copied()
         .expect("impossible");
 
     // safe match because of default value
     let connection_timeout_secs = matches
         .get_one::<usize>("connectionTimeoutSecs")
-        .cloned()
+        .copied()
         .expect("impossible");
 
     let accept = matches.get_one::<String>("accept").cloned();

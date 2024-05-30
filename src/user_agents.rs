@@ -28,7 +28,7 @@ pub enum UserAgent {
 pub fn random_user_agent() -> String {
     let ua = USER_AGENTS.choose(&mut rand::thread_rng());
     // safe unwrap because the array is not empty
-    ua.unwrap().to_string()
+    (*ua.unwrap()).to_string()
 }
 
 #[cfg(test)]

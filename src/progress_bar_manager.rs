@@ -53,8 +53,8 @@ impl ProgressBarManager {
         ProgressBarManager {
             main_pb,
             file_pb_count,
-            rx,
             tx,
+            rx,
         }
     }
 
@@ -68,7 +68,7 @@ impl ProgressBarManager {
     }
 
     pub fn increment_global_progress(&self) {
-        self.main_pb.inc(1)
+        self.main_pb.inc(1);
     }
 
     pub fn message_progress_bar(s: &str) -> String {
@@ -82,11 +82,11 @@ impl ProgressBarManager {
         }
     }
 
-    pub fn log_above_progress_bars(&self, msg: String) {
-        ProgressBarManager::log_above_progress_bar(&self.main_pb, msg)
+    pub fn log_above_progress_bars(&self, msg: &str) {
+        ProgressBarManager::log_above_progress_bar(&self.main_pb, msg);
     }
 
-    fn log_above_progress_bar(pb: &ProgressBar, msg: String) {
+    fn log_above_progress_bar(pb: &ProgressBar, msg: &str) {
         pb.println(format!(
             "[{}] {}",
             Local::now().naive_local().format("%Y-%m-%d %H:%M:%S"),

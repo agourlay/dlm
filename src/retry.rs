@@ -15,7 +15,7 @@ pub fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool
     let should_retry = is_network_error(e);
     if should_retry {
         let msg = format!("Scheduling retry for {} after error {}", link, e);
-        pbm.log_above_progress_bars(msg)
+        pbm.log_above_progress_bars(&msg);
     }
     should_retry
 }

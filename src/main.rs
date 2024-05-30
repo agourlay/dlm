@@ -29,7 +29,7 @@ use tokio_stream::wrappers::LinesStream;
 async fn main() {
     let result = main_result().await;
     std::process::exit(match result {
-        Ok(_) => 0,
+        Ok(()) => 0,
         Err(err) => {
             eprintln!("{}", err);
             1
@@ -76,9 +76,9 @@ async fn main_result() -> Result<(), DlmError> {
         "Starting dlm with at most {} concurrent downloads",
         max_concurrent_downloads
     );
-    pbm.log_above_progress_bars(msg_header);
+    pbm.log_above_progress_bars(&msg_header);
     let msg_count = format!("Found {} URLs in input file {}", nb_of_lines, input_file);
-    pbm.log_above_progress_bars(msg_count);
+    pbm.log_above_progress_bars(&msg_count);
 
     // setup interruption signal handler
     let (stop_sender, mut rx_stop_stream) = broadcast::channel(1);
@@ -170,7 +170,7 @@ async fn main_result() -> Result<(), DlmError> {
                 }
             };
             if let Some(message) = message {
-                pbm_ref.log_above_progress_bars(message);
+                pbm_ref.log_above_progress_bars(&message);
                 pbm_ref.increment_global_progress();
             }
         })

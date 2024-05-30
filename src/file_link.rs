@@ -10,7 +10,7 @@ pub struct FileLink {
 }
 
 impl FileLink {
-    pub fn new(url: String) -> Result<FileLink, DlmError> {
+    pub fn new(url: &str) -> Result<FileLink, DlmError> {
         let trimmed = url.trim();
         if trimmed.is_empty() {
             Err(Other {
@@ -23,7 +23,7 @@ impl FileLink {
             );
             Err(Other { message })
         } else {
-            let url_decoded = url_decode(url.as_str())?;
+            let url_decoded = url_decode(url)?;
             let last_segment_rev: String = url_decoded
                 .chars()
                 .rev()
@@ -32,8 +32,9 @@ impl FileLink {
             // ideally the last_segment is the filename
             let last_segment = last_segment_rev.chars().rev().collect::<String>();
             let (extension, filename_without_extension) =
-                Self::extract_extension_from_filename(last_segment);
+                Self::extract_extension_from_filename(&last_segment);
 
+            let url = url.to_string();
             let file_link = FileLink {
                 url,
                 filename_without_extension,
@@ -43,7 +44,7 @@ impl FileLink {
         }
     }
 
-    pub fn extract_extension_from_filename(filename: String) -> (Option<String>, String) {
+    pub fn extract_extension_from_filename(filename: &str) -> (Option<String>, String) {
         if filename.contains('.') {
             let after_dot_rev: String = filename.chars().rev().take_while(|c| c != &'.').collect();
             // remove potential query params
@@ -101,7 +102,7 @@ mod file_link_tests {
 
     #[test]
     fn no_empty_string() {
-        match FileLink::new("".to_string()) {
+        match FileLink::new("") {
             Err(Other { message }) => assert_eq!(
                 message,
                 "FileLink cannot be built from an empty URL".to_string()
@@ -112,8 +113,8 @@ mod file_link_tests {
 
     #[test]
     fn happy_case() {
-        let url = "https://www.google.com/area51.txt".to_string();
-        match FileLink::new(url.clone()) {
+        let url = "https://www.google.com/area51.txt";
+        match FileLink::new(url) {
             Ok(fl) => {
                 assert_eq!(fl.url, url);
                 assert_eq!(fl.filename_without_extension, "area51".to_string());
@@ -125,7 +126,7 @@ mod file_link_tests {
 
     #[test]
     fn trailing_slash() {
-        let url = "https://www.google.com/area51/".to_string();
+        let url = "https://www.google.com/area51/";
         match FileLink::new(url) {
             Err(Other { message }) => assert_eq!(
                 message,
@@ -137,8 +138,8 @@ mod file_link_tests {
 
     #[test]
     fn no_extension() {
-        let url = "https://www.google.com/area51".to_string();
-        let fl = FileLink::new(url.clone()).unwrap();
+        let url = "https://www.google.com/area51";
+        let fl = FileLink::new(url).unwrap();
         assert_eq!(fl.extension, None);
         assert_eq!(fl.filename_without_extension, "area51");
         assert_eq!(fl.url, url);
@@ -146,8 +147,8 @@ mod file_link_tests {
 
     #[test]
     fn no_extension_use_query_params() {
-        let url = "https://oeis.org/search?q=id:A000001&fmt=json".to_string();
-        let fl = FileLink::new(url.clone()).unwrap();
+        let url = "https://oeis.org/search?q=id:A000001&fmt=json";
+        let fl = FileLink::new(url).unwrap();
         assert_eq!(fl.extension, None);
         assert_eq!(
             fl.filename_without_extension,
@@ -158,16 +159,15 @@ mod file_link_tests {
 
     #[test]
     fn extract_extension_ok() {
-        let (ext, filename) = FileLink::extract_extension_from_filename("area51.txt".to_string());
+        let (ext, filename) = FileLink::extract_extension_from_filename("area51.txt");
         assert_eq!(filename, "area51");
         assert_eq!(ext, Some("txt".to_string()));
     }
 
     #[test]
     fn extract_extension_with_query_param() {
-        let url =
-            "https://releases.ubuntu.com/21.10/ubuntu-21.10-desktop-amd64.iso?id=123".to_string();
-        let fl = FileLink::new(url.clone()).unwrap();
+        let url = "https://releases.ubuntu.com/21.10/ubuntu-21.10-desktop-amd64.iso?id=123";
+        let fl = FileLink::new(url).unwrap();
         assert_eq!(fl.extension, Some("iso".to_string()));
         assert_eq!(fl.filename_without_extension, "ubuntu-21.10-desktop-amd64");
         assert_eq!(fl.url, url);
@@ -175,9 +175,8 @@ mod file_link_tests {
 
     #[test]
     fn extract_extension_with_query_param_bis() {
-        let url = "https://atom-installer.github.com/v1.58.0/atom-amd64.deb?s=1627025597&ext=.deb"
-            .to_string();
-        let fl = FileLink::new(url.clone()).unwrap();
+        let url = "https://atom-installer.github.com/v1.58.0/atom-amd64.deb?s=1627025597&ext=.deb";
+        let fl = FileLink::new(url).unwrap();
         assert_eq!(fl.extension, Some("deb".to_string()));
         assert_eq!(fl.url, url);
         // FIXME
@@ -186,8 +185,8 @@ mod file_link_tests {
 
     #[test]
     fn extract_extension_with_parts() {
-        let url = "https://www.google.com/area51/alien-archive.tar.00".to_string();
-        let fl = FileLink::new(url.clone()).unwrap();
+        let url = "https://www.google.com/area51/alien-archive.tar.00";
+        let fl = FileLink::new(url).unwrap();
         assert_eq!(fl.extension, Some("00".to_string()));
         // TODO fix this - should be alien-archive.tar.00 or parts will collide on tmp file
         assert_eq!(fl.filename_without_extension, "alien-archive.tar");

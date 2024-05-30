@@ -31,7 +31,7 @@ pub async fn download_link(
     // generate new subscription to stop signal
     let mut stop_receiver = broadcast_handle.subscribe();
 
-    let file_link = FileLink::new(raw_link.to_string())?;
+    let file_link = FileLink::new(raw_link)?;
     let (extension, filename_without_extension) = match file_link.extension {
         Some(ext) => (ext, file_link.filename_without_extension),
         None => {
@@ -101,11 +101,11 @@ pub async fn download_link(
             // building the request
             let mut request = client.get(url);
             if let Some(range) = query_range {
-                request = request.header("Range", range)
+                request = request.header("Range", range);
             }
 
             if let Some(accept) = accept_header {
-                request = request.header("Accept", accept)
+                request = request.header("Accept", accept);
             }
 
             // initiate file download
@@ -119,7 +119,7 @@ pub async fn download_link(
                 loop {
                     // select between stop signal and chunk download
                     select! {
-                        Ok(_) = stop_receiver.recv() => {
+                        Ok(()) = stop_receiver.recv() => {
                             file.flush().await?;
                             return Err(DlmError::ProgramInterrupted);
                         }
@@ -185,21 +185,19 @@ fn accept_ranges_value(headers: &HeaderMap) -> Option<String> {
     headers
         .get("accept-ranges")
         .and_then(|ct_len| ct_len.to_str().ok())
-        .map(|v| v.to_string())
+        .map(ToString::to_string)
 }
 
-fn content_disposition_value(headers: &HeaderMap) -> Option<String> {
+fn content_disposition_value(headers: &HeaderMap) -> Option<&str> {
     headers
         .get("content-disposition")
         .and_then(|ct_len| ct_len.to_str().ok())
-        .map(|v| v.to_string())
 }
 
-fn location_value(headers: &HeaderMap) -> Option<String> {
+fn location_value(headers: &HeaderMap) -> Option<&str> {
     headers
         .get("location")
         .and_then(|ct_len| ct_len.to_str().ok())
-        .map(|v| v.to_string())
 }
 
 async fn compute_query_range(
@@ -223,7 +221,7 @@ async fn compute_query_range(
                     "Found part file {} with size {} but it will be overridden because the server does not support resuming the download (range bytes)",
                     tmp_name, tmp_size
                 );
-                pb_manager.log_above_progress_bars(log);
+                pb_manager.log_above_progress_bars(&log);
                 pb_dl.set_position(0);
                 Ok(None)
             }
@@ -234,7 +232,7 @@ async fn compute_query_range(
                 "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
                 tmp_name
             );
-            pb_manager.log_above_progress_bars(log);
+            pb_manager.log_above_progress_bars(&log);
         };
         Ok(None)
     }
@@ -248,10 +246,10 @@ async fn fetch_filename_extension(
     client_no_redirect: &Client,
     pb_manager: &ProgressBarManager,
 ) -> Result<(String, String), DlmError> {
-    // try get the file name from the HTTP headers
+    // try to get the file name from the HTTP headers
     match compute_filename_from_disposition_header(url, client).await? {
         Some(fh) => {
-            let (ext, filename) = FileLink::extract_extension_from_filename(fh);
+            let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
             match ext {
                 Some(e) => Ok((e, filename)),
                 None => {
@@ -259,7 +257,7 @@ async fn fetch_filename_extension(
                         "Could not determine file extension based on header {} for {}",
                         filename, url
                     );
-                    pb_manager.log_above_progress_bars(msg);
+                    pb_manager.log_above_progress_bars(&msg);
                     Ok((
                         NO_EXTENSION.to_owned(),
                         filename_without_extension.to_string(),
@@ -275,7 +273,7 @@ async fn fetch_filename_extension(
                         "Using placeholder file extension as it could not be determined for {}",
                         url
                     );
-                    pb_manager.log_above_progress_bars(msg);
+                    pb_manager.log_above_progress_bars(&msg);
                     Ok((
                         NO_EXTENSION.to_owned(),
                         filename_without_extension.to_string(),
@@ -298,23 +296,23 @@ async fn compute_filename_from_disposition_header(
     client: &Client,
 ) -> Result<Option<String>, DlmError> {
     let head_result = client.head(url).send().await?;
-    if !head_result.status().is_success() {
-        let status_code = format!("{}", head_result.status());
-        Err(DlmError::ResponseStatusNotSuccess { status_code })
-    } else {
+    if head_result.status().is_success() {
         // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition#as_a_response_header_for_the_main_body
         let content_disposition = content_disposition_value(head_result.headers());
         Ok(content_disposition.and_then(parse_filename_header))
+    } else {
+        let status_code = format!("{}", head_result.status());
+        Err(DlmError::ResponseStatusNotSuccess { status_code })
     }
 }
 
-fn parse_filename_header(content_disposition: String) -> Option<String> {
+fn parse_filename_header(content_disposition: &str) -> Option<String> {
     content_disposition
         .split("attachment; filename=")
         .last()
         .and_then(|s| s.strip_prefix('"'))
         .and_then(|s| s.strip_suffix('"'))
-        .map(|s| s.to_string())
+        .map(ToString::to_string)
 }
 
 async fn compute_filename_from_location_header(
@@ -343,7 +341,7 @@ mod downloader_tests {
     #[test]
     fn parse_filename_header_ok() {
         let header_value = "attachment; filename=\"code-stable-x64-1639562789.tar.gz\"";
-        let parsed = parse_filename_header(header_value.to_string());
+        let parsed = parse_filename_header(header_value);
         assert_eq!(parsed, Some("code-stable-x64-1639562789.tar.gz".to_owned()));
     }
 }
