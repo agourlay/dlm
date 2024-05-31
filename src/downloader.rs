@@ -3,9 +3,9 @@ use reqwest::header::HeaderMap;
 use reqwest::Client;
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::broadcast;
 use tokio::time::{timeout, Duration};
 use tokio::{fs as tfs, select};
+use tokio_util::sync::CancellationToken;
 
 use crate::dlm_error::DlmError;
 use crate::file_link::FileLink;
@@ -22,15 +22,11 @@ pub async fn download_link(
     client_no_redirect: &Client,
     connection_timeout_secs: usize,
     output_dir: &str,
-    broadcast_handle: &broadcast::Sender<()>,
+    token: &CancellationToken,
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
     accept_header: &Option<String>,
 ) -> Result<String, DlmError> {
-    // TODO extract downloader in dedicated task with own receiver because the signal could have been sent before the subscription
-    // generate new subscription to stop signal
-    let mut stop_receiver = broadcast_handle.subscribe();
-
     let file_link = FileLink::new(raw_link)?;
     let (extension, filename_without_extension) = match file_link.extension {
         Some(ext) => (ext, file_link.filename_without_extension),
@@ -119,7 +115,7 @@ pub async fn download_link(
                 loop {
                     // select between stop signal and chunk download
                     select! {
-                        Ok(()) = stop_receiver.recv() => {
+                        () = token.cancelled() => {
                             file.flush().await?;
                             return Err(DlmError::ProgramInterrupted);
                         }

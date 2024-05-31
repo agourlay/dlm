@@ -17,13 +17,11 @@ use crate::retry::{retry_handler, retry_strategy};
 use crate::user_agents::{random_user_agent, UserAgent};
 use crate::DlmError::EmptyInputFile;
 use futures_util::stream::StreamExt;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
 use tokio::io::AsyncBufReadExt;
-use tokio::sync::broadcast;
 use tokio::{fs as tfs, signal};
 use tokio_retry::RetryIf;
 use tokio_stream::wrappers::LinesStream;
+use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() {
@@ -81,12 +79,8 @@ async fn main_result() -> Result<(), DlmError> {
     pbm.log_above_progress_bars(&msg_count);
 
     // setup interruption signal handler
-    let (stop_sender, mut rx_stop_stream) = broadcast::channel(1);
-    let stop_sender_arc = Arc::new(stop_sender);
-    let stop_sender_signal = stop_sender_arc.clone();
-    let stopped_flag = Arc::new(AtomicBool::new(false));
-    let stopped_flag_sender = stopped_flag.clone();
-    let stopped_flag_dl = &stopped_flag.clone();
+    let token = CancellationToken::new();
+    let token_signal = token.clone();
     let signal_task_handler = tokio::spawn(async move {
         let mut counter = 0;
         // catch chain of interrupt signals
@@ -94,10 +88,7 @@ async fn main_result() -> Result<(), DlmError> {
             signal::ctrl_c()
                 .await
                 .expect("ctrl-c signal should not fail");
-            stopped_flag_sender.store(true, std::sync::atomic::Ordering::Relaxed);
-            stop_sender_signal
-                .send(())
-                .expect("sending stop signal should not fail");
+            token_signal.cancel();
             counter += 1;
             if counter > 1 {
                 eprintln!("Received multiple interrupt signals - something is stuck");
@@ -109,12 +100,12 @@ async fn main_result() -> Result<(), DlmError> {
     let file = tfs::File::open(input_file).await?;
     let file_reader = tokio::io::BufReader::new(file);
     let line_stream = LinesStream::new(file_reader.lines());
-    let stop_sender_ref_for_dls = &stop_sender_arc;
+    let token_clone = &token.clone();
     line_stream
-        .take_until(rx_stop_stream.recv()) // stop stream on signal
+        .take_until(token_clone.cancelled()) // stop stream on signal
         .for_each_concurrent(max_concurrent_downloads, |link_res| async move {
             // do not start new downloads if the program is stopped
-            if stopped_flag_dl.load(std::sync::atomic::Ordering::Relaxed) {
+            if token_clone.is_cancelled() {
                 return;
             }
             let message = match link_res {
@@ -140,7 +131,7 @@ async fn main_result() -> Result<(), DlmError> {
                                 c_no_redirect_ref,
                                 connection_timeout_secs,
                                 od_ref,
-                                stop_sender_ref_for_dls,
+                                token_clone,
                                 &dl_pb,
                                 pbm_ref,
                                 accept_ref,
@@ -178,7 +169,7 @@ async fn main_result() -> Result<(), DlmError> {
 
     // stop signal handling
     signal_task_handler.abort();
-    if stopped_flag.load(std::sync::atomic::Ordering::Relaxed) {
+    if token.is_cancelled() {
         Err(DlmError::ProgramInterrupted)
     } else {
         // cleanup phase
