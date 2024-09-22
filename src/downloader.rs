@@ -27,6 +27,24 @@ pub async fn download_link(
     pb_manager: &ProgressBarManager,
     accept_header: &Option<String>,
 ) -> Result<String, DlmError> {
+    // select between stop signal and download
+    select! {
+        () = token.cancelled() => Err(DlmError::ProgramInterrupted),
+        dl = download(raw_link, client, client_no_redirect, connection_timeout_secs, output_dir, pb_dl, pb_manager, accept_header) =>dl,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn download(
+    raw_link: &str,
+    client: &Client,
+    client_no_redirect: &Client,
+    connection_timeout_secs: usize,
+    output_dir: &str,
+    pb_dl: &ProgressBar,
+    pb_manager: &ProgressBarManager,
+    accept_header: &Option<String>,
+) -> Result<String, DlmError> {
     let file_link = FileLink::new(raw_link)?;
     let (extension, filename_without_extension) = match file_link.extension {
         Some(ext) => (ext, file_link.filename_without_extension),
@@ -112,28 +130,10 @@ pub async fn download_link(
             } else {
                 // incremental save chunk by chunk into part file
                 let chunk_timeout = Duration::from_secs(connection_timeout_secs as u64);
-                loop {
-                    // select between stop signal and chunk download
-                    select! {
-                        () = token.cancelled() => {
-                            file.flush().await?;
-                            return Err(DlmError::ProgramInterrupted);
-                        }
-                        chunk = timeout(chunk_timeout, dl_response.chunk()) => {
-                            // unpack chunk
-                            let chunk = chunk??;
-                            if let Some(chunk) = chunk {
-                                file.write_all(&chunk).await?;
-                                file.flush().await?;
-                                pb_dl.inc(chunk.len() as u64);
-                            } else {
-                                // end of download
-                                // final flush
-                                file.flush().await?;
-                                break;
-                            }
-                        }
-                    }
+                while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
+                    file.write_all(&chunk).await?;
+                    file.flush().await?;
+                    pb_dl.inc(chunk.len() as u64);
                 }
                 let final_file_size = file.metadata().await?.len();
                 // rename part file to final
