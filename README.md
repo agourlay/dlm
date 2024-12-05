@@ -33,12 +33,14 @@ Options:
           sets up a random User-Agent header to be used by the HTTP client
       --proxy <proxy>
           configure the HTTP client to use a proxy
-  -A, --accept <accept>
-         Accept header to be used by the HTTP client
   -r, --retry <retry>
           configure the number of retries in case of network error [default: 10]
       --connectionTimeoutSecs <connectionTimeoutSecs>
           configure connection timeout in seconds for the HTTP client [default: 10]
+  -A, --accept <accept>
+          Accept header to be used by the HTTP client request
+      --acceptInvalidCerts
+          Accept invalid certificates
   -h, --help
           Print help
   -V, --version

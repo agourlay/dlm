@@ -85,6 +85,12 @@ fn command() -> Command {
                 .num_args(1)
                 .required(false),
         )
+        .arg(
+            Arg::new("acceptInvalidCerts")
+                .help("Accept invalid certificates")
+                .long("acceptInvalidCerts")
+                .action(clap::ArgAction::SetTrue),
+        )
 }
 
 pub struct Arguments {
@@ -96,6 +102,7 @@ pub struct Arguments {
     pub retry: usize,
     pub connection_timeout_secs: usize,
     pub accept: Option<String>,
+    pub accept_invalid_certs: bool,
 }
 
 pub fn get_args() -> Result<Arguments, DlmError> {
@@ -156,6 +163,8 @@ pub fn get_args() -> Result<Arguments, DlmError> {
 
     let accept = matches.get_one::<String>("accept").cloned();
 
+    let accept_invalid_certs = matches.get_flag("acceptInvalidCerts");
+
     Ok(Arguments {
         input_file,
         max_concurrent_downloads,
@@ -165,6 +174,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         retry,
         connection_timeout_secs,
         accept,
+        accept_invalid_certs,
     })
 }
 

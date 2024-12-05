@@ -46,6 +46,7 @@ async fn main_result() -> Result<(), DlmError> {
         retry,
         connection_timeout_secs,
         accept,
+        accept_invalid_certs,
     } = get_args()?;
 
     let nb_of_lines = count_non_empty_lines(&input_file).await?;
@@ -54,9 +55,21 @@ async fn main_result() -> Result<(), DlmError> {
     }
 
     // setup HTTP clients
-    let client = make_client(&user_agent, &proxy, true, connection_timeout_secs)?;
+    let client = make_client(
+        &user_agent,
+        &proxy,
+        true,
+        connection_timeout_secs,
+        accept_invalid_certs,
+    )?;
     let c_ref = &client;
-    let client_no_redirect = make_client(&user_agent, &proxy, false, connection_timeout_secs)?;
+    let client_no_redirect = make_client(
+        &user_agent,
+        &proxy,
+        false,
+        connection_timeout_secs,
+        accept_invalid_certs,
+    )?;
     let c_no_redirect_ref = &client_no_redirect;
     let accept_ref = &accept;
     // trim trailing slash if any
