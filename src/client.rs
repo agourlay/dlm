@@ -4,8 +4,8 @@ use reqwest::{Client, Proxy};
 use std::time::Duration;
 
 pub fn make_client(
-    user_agent: &Option<UserAgent>,
-    proxy: &Option<String>,
+    user_agent: Option<&UserAgent>,
+    proxy: Option<&String>,
     redirect: bool,
     connection_timeout_sec: usize,
     accept_invalid_certs: bool,

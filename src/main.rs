@@ -56,22 +56,22 @@ async fn main_result() -> Result<(), DlmError> {
 
     // setup HTTP clients
     let client = make_client(
-        &user_agent,
-        &proxy,
+        user_agent.as_ref(),
+        proxy.as_ref(),
         true,
         connection_timeout_secs,
         accept_invalid_certs,
     )?;
     let c_ref = &client;
     let client_no_redirect = make_client(
-        &user_agent,
-        &proxy,
+        user_agent.as_ref(),
+        proxy.as_ref(),
         false,
         connection_timeout_secs,
         accept_invalid_certs,
     )?;
     let c_no_redirect_ref = &client_no_redirect;
-    let accept_ref = &accept;
+    let accept_ref = accept.as_ref();
     // trim trailing slash if any
     let od_ref = &output_dir
         .strip_suffix('/')
@@ -79,7 +79,7 @@ async fn main_result() -> Result<(), DlmError> {
         .to_string();
 
     // setup progress bar manager
-    let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines as u64).await;
+    let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines).await;
     let pbm_ref = &pbm;
 
     // print startup info
@@ -186,7 +186,7 @@ async fn main_result() -> Result<(), DlmError> {
     }
 }
 
-async fn count_non_empty_lines(input_file: &str) -> Result<i32, DlmError> {
+async fn count_non_empty_lines(input_file: &str) -> Result<u64, DlmError> {
     let file = tfs::File::open(input_file).await?;
     let file_reader = tokio::io::BufReader::new(file);
     let stream = LinesStream::new(file_reader.lines());
