@@ -14,7 +14,7 @@ pub fn retry_strategy(max_attempts: usize) -> impl Iterator<Item = Duration> {
 pub fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool {
     let should_retry = is_network_error(e);
     if should_retry {
-        let msg = format!("Scheduling retry for {} after error {}", link, e);
+        let msg = format!("Scheduling retry for {link} after error {e}");
         pbm.log_above_progress_bars(&msg);
     }
     should_retry

@@ -17,10 +17,7 @@ impl FileLink {
                 message: "FileLink cannot be built from an empty URL".to_string(),
             })
         } else if trimmed.ends_with('/') {
-            let message = format!(
-                "FileLink cannot be built with an invalid extension '{}'",
-                trimmed
-            );
+            let message = format!("FileLink cannot be built with an invalid extension '{trimmed}'");
             Err(Other { message })
         } else {
             let url_decoded = url_decode(url)?;

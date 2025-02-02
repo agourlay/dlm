@@ -59,8 +59,8 @@ pub async fn download(
             .await?
         }
     };
-    let filename_with_extension = format!("{}.{}", filename_without_extension, extension);
-    let final_file_path = &format!("{}/{}", output_dir, filename_with_extension);
+    let filename_with_extension = format!("{filename_without_extension}.{extension}");
+    let final_file_path = &format!("{output_dir}/{filename_with_extension}");
     if Path::new(final_file_path).exists() {
         let final_file_size = tfs::File::open(final_file_path)
             .await?
@@ -95,7 +95,7 @@ pub async fn download(
                 pb_dl.set_length(total_size);
             };
 
-            let tmp_name = format!("{}/{}.part", output_dir, filename_with_extension);
+            let tmp_name = format!("{output_dir}/{filename_with_extension}.part");
             let query_range =
                 compute_query_range(pb_dl, pb_manager, content_length, accept_ranges, &tmp_name)
                     .await?;
@@ -209,13 +209,12 @@ async fn compute_query_range(
         match (accept_ranges, content_length) {
             (Some(range), Some(cl)) if range == "bytes" => {
                 pb_dl.set_position(tmp_size);
-                let range_msg = format!("bytes={}-{}", tmp_size, cl);
+                let range_msg = format!("bytes={tmp_size}-{cl}");
                 Ok(Some(range_msg))
             }
             _ => {
                 let log = format!(
-                    "Found part file {} with size {} but it will be overridden because the server does not support resuming the download (range bytes)",
-                    tmp_name, tmp_size
+                    "Found part file {tmp_name} with size {tmp_size} but it will be overridden because the server does not support resuming the download (range bytes)"
                 );
                 pb_manager.log_above_progress_bars(&log);
                 pb_dl.set_position(0);
@@ -225,8 +224,7 @@ async fn compute_query_range(
     } else {
         if accept_ranges.is_none() {
             let log = format!(
-                "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
-                tmp_name
+                "The download of file {tmp_name} should not be interrupted because the server does not support resuming the download (range bytes)"
             );
             pb_manager.log_above_progress_bars(&log);
         };
@@ -246,19 +244,17 @@ async fn fetch_filename_extension(
     match compute_filename_from_disposition_header(url, client).await? {
         Some(fh) => {
             let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
-            match ext {
-                Some(e) => Ok((e, filename)),
-                None => {
-                    let msg = format!(
-                        "Could not determine file extension based on header {} for {}",
-                        filename, url
-                    );
-                    pb_manager.log_above_progress_bars(&msg);
-                    Ok((
-                        NO_EXTENSION.to_owned(),
-                        filename_without_extension.to_string(),
-                    ))
-                }
+            if let Some(e) = ext {
+                Ok((e, filename))
+            } else {
+                let msg = format!(
+                    "Could not determine file extension based on header {filename} for {url}"
+                );
+                pb_manager.log_above_progress_bars(&msg);
+                Ok((
+                    NO_EXTENSION.to_owned(),
+                    filename_without_extension.to_string(),
+                ))
             }
         }
         None => {
@@ -266,8 +262,7 @@ async fn fetch_filename_extension(
             match compute_filename_from_location_header(url, client_no_redirect).await? {
                 None => {
                     let msg = format!(
-                        "Using placeholder file extension as it could not be determined for {}",
-                        url
+                        "Using placeholder file extension as it could not be determined for {url}"
                     );
                     pb_manager.log_above_progress_bars(&msg);
                     Ok((

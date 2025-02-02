@@ -29,7 +29,7 @@ async fn main() {
     std::process::exit(match result {
         Ok(()) => 0,
         Err(err) => {
-            eprintln!("{}", err);
+            eprintln!("{err}");
             1
         }
     });
@@ -83,12 +83,10 @@ async fn main_result() -> Result<(), DlmError> {
     let pbm_ref = &pbm;
 
     // print startup info
-    let msg_header = format!(
-        "Starting dlm with at most {} concurrent downloads",
-        max_concurrent_downloads
-    );
+    let msg_header =
+        format!("Starting dlm with at most {max_concurrent_downloads} concurrent downloads");
     pbm.log_above_progress_bars(&msg_header);
-    let msg_count = format!("Found {} URLs in input file {}", nb_of_lines, input_file);
+    let msg_count = format!("Found {nb_of_lines} URLs in input file {input_file}");
     pbm.log_above_progress_bars(&msg_count);
 
     // setup interruption signal handler
@@ -122,7 +120,7 @@ async fn main_result() -> Result<(), DlmError> {
                 return;
             }
             let message = match link_res {
-                Err(e) => Some(format!("Error with links iterator {}", e)),
+                Err(e) => Some(format!("Error with links iterator {e}")),
                 Ok(link) if link.trim().is_empty() => Some("Skipping empty line".to_string()),
                 Ok(link) => {
                     // claim a progress bar for the upcoming download
@@ -166,10 +164,7 @@ async fn main_result() -> Result<(), DlmError> {
                     match processed {
                         Ok(info) => Some(info),
                         Err(DlmError::ProgramInterrupted) => None, // no logs on interrupt
-                        Err(e) => Some(format!(
-                            "Unrecoverable error while processing {}: {}",
-                            link, e
-                        )),
+                        Err(e) => Some(format!("Unrecoverable error while processing {link}: {e}")),
                     }
                 }
             };
