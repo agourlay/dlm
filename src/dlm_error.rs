@@ -43,43 +43,43 @@ impl From<reqwest::Error> for DlmError {
         //TODO use Reqwest's types instead of guessing from strings https://github.com/seanmonstar/reqwest/issues/757
         let e_string = e.to_string();
         if e_string.contains(BODY_ERROR) {
-            DlmError::ResponseBodyError
+            Self::ResponseBodyError
         } else if e_string.contains(CONNECTION_CLOSED) {
-            DlmError::ConnectionClosed
+            Self::ConnectionClosed
         } else if e_string.contains(CONNECTION_TIMEOUT) {
-            DlmError::ConnectionTimeout
+            Self::ConnectionTimeout
         } else {
-            DlmError::Other { message: e_string }
+            Self::Other { message: e_string }
         }
     }
 }
 
 impl From<std::io::Error> for DlmError {
     fn from(e: std::io::Error) -> Self {
-        DlmError::StdIoError { e }
+        Self::StdIoError { e }
     }
 }
 
 impl From<Elapsed> for DlmError {
     fn from(_: Elapsed) -> Self {
-        DlmError::DeadLineElapsedTimeout
+        Self::DeadLineElapsedTimeout
     }
 }
 
 impl From<JoinError> for DlmError {
     fn from(e: JoinError) -> Self {
-        DlmError::TaskError { e }
+        Self::TaskError { e }
     }
 }
 
 impl From<async_channel::RecvError> for DlmError {
     fn from(e: async_channel::RecvError) -> Self {
-        DlmError::ChannelError { e }
+        Self::ChannelError { e }
     }
 }
 
 impl From<clap::Error> for DlmError {
     fn from(e: clap::Error) -> Self {
-        DlmError::ClapError { e }
+        Self::ClapError { e }
     }
 }

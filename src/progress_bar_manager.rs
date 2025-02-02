@@ -14,7 +14,7 @@ pub struct ProgressBarManager {
 }
 
 impl ProgressBarManager {
-    pub async fn init(max_concurrent_downloads: usize, main_pb_len: u64) -> ProgressBarManager {
+    pub async fn init(max_concurrent_downloads: usize, main_pb_len: u64) -> Self {
         let mp = MultiProgress::new();
         // Refresh terminal 5 times per seconds
         let draw_target = ProgressDrawTarget::stdout_with_hz(5);
@@ -46,11 +46,11 @@ impl ProgressBarManager {
         for _ in 0..file_pb_count {
             let file_pb = mp.add(ProgressBar::new(0));
             file_pb.set_style(dl_style.clone());
-            file_pb.set_message(ProgressBarManager::message_progress_bar(PENDING));
+            file_pb.set_message(Self::message_progress_bar(PENDING));
             tx.send(file_pb).await.expect("channel should not fail");
         }
 
-        ProgressBarManager {
+        Self {
             main_pb,
             file_pb_count,
             tx,
@@ -83,7 +83,7 @@ impl ProgressBarManager {
     }
 
     pub fn log_above_progress_bars(&self, msg: &str) {
-        ProgressBarManager::log_above_progress_bar(&self.main_pb, msg);
+        Self::log_above_progress_bar(&self.main_pb, msg);
     }
 
     fn log_above_progress_bar(pb: &ProgressBar, msg: &str) {
@@ -96,6 +96,6 @@ impl ProgressBarManager {
 
     pub fn reset_progress_bar(pb: &ProgressBar) {
         pb.reset();
-        pb.set_message(ProgressBarManager::message_progress_bar(PENDING));
+        pb.set_message(Self::message_progress_bar(PENDING));
     }
 }
