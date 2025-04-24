@@ -208,7 +208,10 @@ async fn compute_query_range(
         let tmp_size = tfs::File::open(&tmp_name).await?.metadata().await?.len();
         match (accept_ranges, content_length) {
             (Some(range), Some(cl)) if range == "bytes" => {
+                // set the progress bar to the current size
                 pb_dl.set_position(tmp_size);
+                // reset the elapsed time to avoid showing a really large speed
+                pb_dl.reset_elapsed();
                 let range_msg = format!("bytes={tmp_size}-{cl}");
                 Ok(Some(range_msg))
             }
