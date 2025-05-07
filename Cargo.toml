@@ -14,7 +14,7 @@ edition = "2021"
 futures-util = "0.3.31"
 reqwest = { version = "0.12.15", default-features = false, features = ["http2", "gzip", "rustls-tls"] }
 tokio-stream = { version = "0.1.17", features = ["io-util"] }
-tokio = { version = "1.44.2", features = ["rt-multi-thread", "fs", "macros", "signal"] }
+tokio = { version = "1.45.0", features = ["rt-multi-thread", "fs", "macros", "signal"] }
 tokio-util = "0.7.15"
 tokio-retry = "0.3.0"
 async-channel = "2.3.1"
