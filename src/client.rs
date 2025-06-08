@@ -1,4 +1,4 @@
-use crate::{random_user_agent, UserAgent};
+use crate::{UserAgent, random_user_agent};
 use reqwest::redirect::Policy;
 use reqwest::{Client, Proxy};
 use std::time::Duration;

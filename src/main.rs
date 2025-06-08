@@ -8,14 +8,14 @@ mod retry;
 mod user_agents;
 mod utils;
 
-use crate::args::{get_args, Arguments};
+use crate::DlmError::EmptyInputFile;
+use crate::args::{Arguments, get_args};
 use crate::client::make_client;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
 use crate::progress_bar_manager::ProgressBarManager;
 use crate::retry::{retry_handler, retry_strategy};
-use crate::user_agents::{random_user_agent, UserAgent};
-use crate::DlmError::EmptyInputFile;
+use crate::user_agents::{UserAgent, random_user_agent};
 use futures_util::stream::StreamExt;
 use tokio::io::AsyncBufReadExt;
 use tokio::{fs as tfs, signal};

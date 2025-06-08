@@ -2,7 +2,7 @@ use crate::DlmError;
 use async_channel::{Receiver, Sender};
 use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
-use std::cmp::{min, Ordering};
+use std::cmp::{Ordering, min};
 
 const PENDING: &str = "pending";
 

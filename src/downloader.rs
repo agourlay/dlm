@@ -1,16 +1,16 @@
 use indicatif::ProgressBar;
-use reqwest::header::HeaderMap;
 use reqwest::Client;
+use reqwest::header::HeaderMap;
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 use tokio::{fs as tfs, select};
 use tokio_util::sync::CancellationToken;
 
+use crate::ProgressBarManager;
 use crate::dlm_error::DlmError;
 use crate::file_link::FileLink;
 use crate::utils::pretty_bytes_size;
-use crate::ProgressBarManager;
 
 const NO_EXTENSION: &str = "NO_EXTENSION_FOUND";
 

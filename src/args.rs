@@ -1,9 +1,9 @@
-use crate::user_agents::UserAgent;
-use crate::user_agents::UserAgent::{CustomUserAgent, RandomUserAgent};
 use crate::DlmError;
 use crate::DlmError::CliArgumentError;
-use clap::{crate_authors, crate_description, crate_name, crate_version};
+use crate::user_agents::UserAgent;
+use crate::user_agents::UserAgent::{CustomUserAgent, RandomUserAgent};
 use clap::{Arg, Command};
+use clap::{crate_authors, crate_description, crate_name, crate_version};
 use std::path::Path;
 
 fn command() -> Command {
