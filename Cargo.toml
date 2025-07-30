@@ -28,7 +28,7 @@ tokio-util = "0.7.15"
 tokio-retry = "0.3.0"
 async-channel = "2.5.0"
 chrono = "0.4.41"
-clap = { version = "4.5.41", features = ["cargo"] }
+clap = { version = "4.5.42", features = ["cargo"] }
 indicatif = "0.18.0"
 thiserror = "2.0.12"
 rand = "0.9.2"
