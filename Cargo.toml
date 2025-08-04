@@ -24,7 +24,7 @@ tokio = { version = "1.47.1", features = [
     "macros",
     "signal",
 ] }
-tokio-util = "0.7.15"
+tokio-util = "0.7.16"
 tokio-retry = "0.3.0"
 async-channel = "2.5.0"
 chrono = "0.4.41"
