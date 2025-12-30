@@ -12,7 +12,7 @@ edition = "2024"
 
 [dependencies]
 futures-util = "0.3.31"
-reqwest = { version = "0.13.0", default-features = false, features = [
+reqwest = { version = "0.13.1", default-features = false, features = [
     "http2",
     "gzip",
     "rustls",
