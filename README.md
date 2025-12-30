@@ -18,40 +18,47 @@ A minimal HTTP download manager that works just fine.
 ./dlm --help
 Minimal download manager
 
-Usage: dlm [OPTIONS] --maxConcurrentDownloads <maxConcurrentDownloads> --inputFile <inputFile> --outputDir <outputDir>
+Usage: dlm [OPTIONS] --input-file <inputFile>
 
 Options:
-  -M, --maxConcurrentDownloads <maxConcurrentDownloads>
-          used to limit the number of downloads in flight
-  -i, --inputFile <inputFile>
-          input file with links
-  -o, --outputDir <outputDir>
-          output directory for downloads
-  -U, --userAgent <userAgent>
-          User-Agent header to be used by the HTTP client
-      --randomUserAgent
-          sets up a random User-Agent header to be used by the HTTP client
+  -m, --max-concurrent <maxConcurrentDownloads>
+          Maximum number of concurrent downloads [default: 2]
+  -i, --input-file <inputFile>
+          Input file with links
+  -o, --output-dir <outputDir>
+          Output directory for downloads [default: .]
+  -u, --user-agent <userAgent>
+          User-Agent header to use
+      --random-user-agent
+          Use a random User-Agent header
       --proxy <proxy>
-          configure the HTTP client to use a proxy
+          HTTP proxy to use
   -r, --retry <retry>
-          configure the number of retries in case of network error [default: 10]
-      --connectionTimeoutSecs <connectionTimeoutSecs>
-          configure connection timeout in seconds for the HTTP client [default: 10]
-  -A, --accept <accept>
-          Accept header to be used by the HTTP client request
-      --acceptInvalidCerts
-          Accept invalid certificates
+          Number of retries on network error [default: 10]
+      --connection-timeout <connectionTimeoutSecs>
+          Connection timeout in seconds [default: 10]
+  -a, --accept <accept>
+          Accept header value
+      --accept-invalid-certs
+          Accept invalid TLS certificates
   -h, --help
           Print help
   -V, --version
           Print version
-
 ```
 
-Example:
+## Examples
 
+- Quick run in current directory:
+
+```bash
+./dlm --input-file ~/dlm/links.txt
 ```
-./dlm --inputFile ~/dlm/links.txt --outputDir ~/dlm/output --maxConcurrentDownloads 2
+
+- With output directory and max concurrent download control
+
+```bash
+./dlm --input-file ~/dlm/links.txt --output-dir ~/dlm/output --max-concurrent 2
 ```
 
 ## Installation

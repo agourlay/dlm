@@ -13,94 +13,94 @@ fn command() -> Command {
         .about(crate_description!())
         .arg(
             Arg::new("maxConcurrentDownloads")
-                .help("used to limit the number of downloads in flight")
-                .long("maxConcurrentDownloads")
-                .short('M')
+                .help("Maximum number of concurrent downloads")
+                .long("max-concurrent")
+                .short('m')
                 .num_args(1)
-                .value_parser(clap::value_parser!(usize))
-                .required(true),
+                .value_parser(clap::value_parser!(u32))
+                .default_value("2"),
         )
         .arg(
             Arg::new("inputFile")
-                .help("input file with links")
-                .long("inputFile")
+                .help("Input file with links")
+                .long("input-file")
                 .short('i')
                 .num_args(1)
                 .required(true),
         )
         .arg(
             Arg::new("outputDir")
-                .help("output directory for downloads")
-                .long("outputDir")
+                .help("Output directory for downloads")
+                .long("output-dir")
                 .short('o')
-                .num_args(1)
-                .required(true),
+                .default_value(".")
+                .num_args(1),
         )
         .arg(
             Arg::new("userAgent")
-                .help("User-Agent header to be used by the HTTP client")
-                .long("userAgent")
-                .short('U')
+                .help("User-Agent header to use")
+                .long("user-agent")
+                .short('u')
                 .num_args(1)
                 .required(false),
         )
         .arg(
             Arg::new("randomUserAgent")
-                .help("sets up a random User-Agent header to be used by the HTTP client")
-                .long("randomUserAgent")
+                .help("Use a random User-Agent header")
+                .long("random-user-agent")
                 .required(false)
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
             Arg::new("proxy")
-                .help("configure the HTTP client to use a proxy")
+                .help("HTTP proxy to use")
                 .long("proxy")
                 .num_args(1)
                 .required(false),
         )
         .arg(
             Arg::new("retry")
-                .help("configure the number of retries in case of network error")
+                .help("Number of retries on network error")
                 .long("retry")
                 .short('r')
                 .default_value("10")
-                .value_parser(clap::value_parser!(usize))
+                .value_parser(clap::value_parser!(u32))
                 .num_args(1)
                 .required(false),
         )
         .arg(
             Arg::new("connectionTimeoutSecs")
-                .help("configure connection timeout in seconds for the HTTP client")
-                .long("connectionTimeoutSecs")
+                .help("Connection timeout in seconds")
+                .long("connection-timeout")
                 .default_value("10")
-                .value_parser(clap::value_parser!(usize))
+                .value_parser(clap::value_parser!(u32))
                 .num_args(1)
                 .required(false),
         )
         .arg(
             Arg::new("accept")
-                .help("Accept header to be used by the HTTP client request")
+                .help("Accept header value")
                 .long("accept")
-                .short('A')
+                .short('a')
                 .num_args(1)
                 .required(false),
         )
         .arg(
             Arg::new("acceptInvalidCerts")
-                .help("Accept invalid certificates")
-                .long("acceptInvalidCerts")
+                .help("Accept invalid TLS certificates")
+                .long("accept-invalid-certs")
                 .action(clap::ArgAction::SetTrue),
         )
 }
 
 pub struct Arguments {
     pub input_file: String,
-    pub max_concurrent_downloads: usize,
+    pub max_concurrent_downloads: u32,
     pub output_dir: String,
     pub user_agent: Option<UserAgent>,
     pub proxy: Option<String>,
-    pub retry: usize,
-    pub connection_timeout_secs: usize,
+    pub retry: u32,
+    pub connection_timeout_secs: u32,
     pub accept: Option<String>,
     pub accept_invalid_certs: bool,
 }
@@ -109,7 +109,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
     let command = command();
     let matches = command.get_matches();
 
-    let max_concurrent_downloads: usize = *matches
+    let max_concurrent_downloads: u32 = *matches
         .get_one("maxConcurrentDownloads")
         .expect("impossible");
 
@@ -151,13 +151,13 @@ pub fn get_args() -> Result<Arguments, DlmError> {
 
     // safe match because of default value
     let retry = matches
-        .get_one::<usize>("retry")
+        .get_one::<u32>("retry")
         .copied()
         .expect("impossible");
 
     // safe match because of default value
     let connection_timeout_secs = matches
-        .get_one::<usize>("connectionTimeoutSecs")
+        .get_one::<u32>("connectionTimeoutSecs")
         .copied()
         .expect("impossible");
 

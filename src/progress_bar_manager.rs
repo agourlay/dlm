@@ -8,13 +8,13 @@ const PENDING: &str = "pending";
 
 pub struct ProgressBarManager {
     main_pb: ProgressBar,
-    file_pb_count: usize,
+    file_pb_count: u64,
     pub tx: Sender<ProgressBar>,
     pub rx: Receiver<ProgressBar>,
 }
 
 impl ProgressBarManager {
-    pub async fn init(max_concurrent_downloads: usize, main_pb_len: u64) -> Self {
+    pub async fn init(max_concurrent_downloads: u32, main_pb_len: u64) -> Self {
         let mp = MultiProgress::new();
         // Refresh terminal 5 times per seconds
         let draw_target = ProgressDrawTarget::stdout_with_hz(5);
@@ -29,14 +29,14 @@ impl ProgressBarManager {
         main_pb.set_length(main_pb_len);
 
         // `file_pb_count` progress bars are shared between the threads at anytime
-        let file_pb_count = min(max_concurrent_downloads, main_pb_len as usize);
+        let file_pb_count = min(max_concurrent_downloads as u64, main_pb_len);
 
         // If you need a multi-producer multi-consumer channel where only one consumer sees each message, you can use the async-channel crate.
         // There are also channels for use outside of asynchronous Rust, such as std::sync::mpsc and crossbeam::channel.
         // These channels wait for messages by blocking the thread, which is not allowed in asynchronous code.
         // ref: https://tokio.rs/tokio/tutorial/channels
         let (tx, rx): (Sender<ProgressBar>, Receiver<ProgressBar>) =
-            async_channel::bounded(file_pb_count);
+            async_channel::bounded(file_pb_count as usize);
 
         let dl_style = ProgressStyle::default_bar()
             .template("{msg} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")

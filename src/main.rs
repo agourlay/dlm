@@ -114,7 +114,7 @@ async fn main_result() -> Result<(), DlmError> {
     let token_clone = &token.clone();
     line_stream
         .take_until(token_clone.cancelled()) // stop stream on signal
-        .for_each_concurrent(max_concurrent_downloads, |link_res| async move {
+        .for_each_concurrent(max_concurrent_downloads as usize, |link_res| async move {
             // do not start new downloads if the program is stopped
             if token_clone.is_cancelled() {
                 return;

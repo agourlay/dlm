@@ -2,13 +2,13 @@ use crate::{DlmError, ProgressBarManager};
 use std::time::Duration;
 use tokio_retry::strategy::ExponentialBackoff;
 
-pub fn retry_strategy(max_attempts: usize) -> impl Iterator<Item = Duration> {
+pub fn retry_strategy(max_attempts: u32) -> impl Iterator<Item = Duration> {
     // usually implemented as `interval * factor^retry`
     // but tokio-retry does `interval^retry * factor`
     ExponentialBackoff::from_millis(10) // base interval in `interval^retry`
         .max_delay(Duration::from_secs(10 * 60)) // max 10 minutes
         .factor(1)
-        .take(max_attempts) // limit retries
+        .take(max_attempts as usize) // limit retries
 }
 
 pub fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool {
