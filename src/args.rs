@@ -142,7 +142,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
     }
 
     let user_agent: Option<UserAgent> = match matches.get_one::<String>("userAgent") {
-        Some(user_agent) => Some(CustomUserAgent(user_agent.to_string())),
+        Some(user_agent) => Some(CustomUserAgent(user_agent.clone())),
         None if matches.get_flag("randomUserAgent") => Some(RandomUserAgent),
         _ => None,
     };

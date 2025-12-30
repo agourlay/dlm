@@ -230,7 +230,7 @@ async fn compute_query_range(
                 "The download of file {tmp_name} should not be interrupted because the server does not support resuming the download (range bytes)"
             );
             pb_manager.log_above_progress_bars(&log);
-        };
+        }
         Ok(None)
     }
 }
@@ -277,7 +277,7 @@ async fn fetch_filename_extension(
                     Some(ext) => Ok((ext, fl.filename_without_extension)),
                     None => Ok((
                         NO_EXTENSION.to_owned(),
-                        fl.filename_without_extension.to_string(),
+                        fl.filename_without_extension.clone(),
                     )),
                 },
             }
