@@ -7,7 +7,7 @@ repository = "https://github.com/agourlay/dlm"
 license = "Apache-2.0"
 readme = "README.md"
 categories = ["command-line-utilities"]
-keywords = ["cli", "http", "download", "download-manager"]
+keywords = ["http", "download", "download-manager"]
 edition = "2024"
 
 [dependencies]
