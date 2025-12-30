@@ -12,6 +12,15 @@ fn command() -> Command {
         .author(crate_authors!("\n"))
         .about(crate_description!())
         .arg(
+            Arg::new("url")
+                .help("Direct URL to download")
+                .value_name("URL")
+                .index(1)
+                .num_args(1)
+                .required(false)
+                .conflicts_with("inputFile"),
+        )
+        .arg(
             Arg::new("maxConcurrentDownloads")
                 .help("Maximum number of concurrent downloads")
                 .long("max-concurrent")
@@ -26,7 +35,7 @@ fn command() -> Command {
                 .long("input-file")
                 .short('i')
                 .num_args(1)
-                .required(true),
+                .conflicts_with("url"),
         )
         .arg(
             Arg::new("outputDir")
@@ -93,8 +102,13 @@ fn command() -> Command {
         )
 }
 
+pub enum Input {
+    File(String),
+    Url(String),
+}
+
 pub struct Arguments {
-    pub input_file: String,
+    pub input: Input,
     pub max_concurrent_downloads: u32,
     pub output_dir: String,
     pub user_agent: Option<UserAgent>,
@@ -119,16 +133,30 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         });
     }
 
-    let input_file = matches
-        .get_one::<String>("inputFile")
-        .expect("impossible")
-        .trim()
-        .to_string();
-    if !Path::new(&input_file).is_file() {
-        return Err(CliArgumentError {
-            message: "'inputFile' does not exist".to_string(),
-        });
-    }
+    let url = matches.get_one::<String>("url");
+    let input_file = matches.get_one::<String>("inputFile");
+
+    // Process mutually exclusive inputs
+    let input = match (url, input_file) {
+        (None, None) => Err(CliArgumentError {
+            message: "provide either a URL or --input-file".to_string(),
+        }),
+        (Some(_), Some(_)) => Err(CliArgumentError {
+            message: "provide either a URL or --input-file".to_string(),
+        }),
+        (Some(url), None) => Ok(Input::Url(url.trim().to_string())),
+        (None, Some(file)) => {
+            let input_file = file.trim().to_string();
+            if !Path::new(&input_file).is_file() {
+                Err(CliArgumentError {
+                    message: "'inputFile' does not exist".to_string(),
+                })
+            } else {
+                Ok(Input::File(input_file))
+            }
+        }
+    };
+    let input = input?;
 
     let output_dir = matches
         .get_one::<String>("outputDir")
@@ -166,7 +194,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
     let accept_invalid_certs = matches.get_flag("acceptInvalidCerts");
 
     Ok(Arguments {
-        input_file,
+        input,
         max_concurrent_downloads,
         output_dir,
         user_agent,

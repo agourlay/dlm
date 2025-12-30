@@ -7,7 +7,7 @@ A minimal HTTP download manager that works just fine.
 
 ## Features
 
-- read URLs from a text file (one entry per line)
+- read URLs from a text file (one entry per line) OR a single URL as argument
 - control maximum number of concurrent downloads
 - resume interrupted downloads if possible (using HTTP range)
 - automatically retry re-establishing download in case of timeout or hanging connection
@@ -18,7 +18,10 @@ A minimal HTTP download manager that works just fine.
 ./dlm --help
 Minimal download manager
 
-Usage: dlm [OPTIONS] --input-file <inputFile>
+Usage: dlm [OPTIONS] [URL]
+
+Arguments:
+  [URL]  Direct URL to download
 
 Options:
   -m, --max-concurrent <maxConcurrentDownloads>
@@ -49,7 +52,13 @@ Options:
 
 ## Examples
 
-- Quick run in current directory:
+- Download single file
+
+```bash
+./dlm https://storage.com/my-file.zip
+```
+
+- Download several files into current directory
 
 ```bash
 ./dlm --input-file ~/dlm/links.txt

@@ -9,7 +9,7 @@ mod user_agents;
 mod utils;
 
 use crate::DlmError::EmptyInputFile;
-use crate::args::{Arguments, get_args};
+use crate::args::{Arguments, Input, get_args};
 use crate::client::make_client;
 use crate::dlm_error::DlmError;
 use crate::downloader::download_link;
@@ -17,9 +17,11 @@ use crate::progress_bar_manager::ProgressBarManager;
 use crate::retry::{retry_handler, retry_strategy};
 use crate::user_agents::{UserAgent, random_user_agent};
 use futures_util::stream::StreamExt;
+use std::pin::Pin;
 use tokio::io::AsyncBufReadExt;
 use tokio::{fs as tfs, signal};
 use tokio_retry::RetryIf;
+use tokio_stream::Stream;
 use tokio_stream::wrappers::LinesStream;
 use tokio_util::sync::CancellationToken;
 
@@ -38,7 +40,7 @@ async fn main() {
 async fn main_result() -> Result<(), DlmError> {
     // CLI args
     let Arguments {
-        input_file,
+        input,
         max_concurrent_downloads,
         output_dir,
         user_agent,
@@ -49,10 +51,23 @@ async fn main_result() -> Result<(), DlmError> {
         accept_invalid_certs,
     } = get_args()?;
 
-    let nb_of_lines = count_non_empty_lines(&input_file).await?;
-    if nb_of_lines == 0 {
-        return Err(EmptyInputFile);
-    }
+    // setup interruption signal handler
+    let token = CancellationToken::new();
+    let token_signal = token.clone();
+    let signal_task_handler = tokio::spawn(async move {
+        let mut counter = 0;
+        // catch chain of interrupt signals
+        loop {
+            signal::ctrl_c()
+                .await
+                .expect("ctrl-c signal should not fail");
+            token_signal.cancel();
+            counter += 1;
+            if counter > 1 {
+                eprintln!("Received multiple interrupt signals - something is stuck");
+            }
+        }
+    });
 
     // setup HTTP clients
     let client = make_client(
@@ -78,41 +93,46 @@ async fn main_result() -> Result<(), DlmError> {
         .unwrap_or(&output_dir)
         .to_string();
 
+    let nb_of_lines = match &input {
+        Input::File(input_file) => count_non_empty_lines(input_file).await?,
+        Input::Url(_) => 1,
+    };
+    if nb_of_lines == 0 {
+        return Err(EmptyInputFile);
+    }
+
     // setup progress bar manager
     let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines).await;
     let pbm_ref = &pbm;
 
-    // print startup info
-    let msg_header =
-        format!("Starting dlm with at most {max_concurrent_downloads} concurrent downloads");
-    pbm.log_above_progress_bars(&msg_header);
-    let msg_count = format!("Found {nb_of_lines} URLs in input file {input_file}");
-    pbm.log_above_progress_bars(&msg_count);
+    // Unification type
+    type LineStream = Pin<Box<dyn Stream<Item = Result<String, std::io::Error>> + Send>>;
 
-    // setup interruption signal handler
-    let token = CancellationToken::new();
-    let token_signal = token.clone();
-    let signal_task_handler = tokio::spawn(async move {
-        let mut counter = 0;
-        // catch chain of interrupt signals
-        loop {
-            signal::ctrl_c()
-                .await
-                .expect("ctrl-c signal should not fail");
-            token_signal.cancel();
-            counter += 1;
-            if counter > 1 {
-                eprintln!("Received multiple interrupt signals - something is stuck");
-            }
+    let stream: LineStream = match input {
+        Input::File(input_file) => {
+            // print startup info
+            pbm.log_above_progress_bars(&format!(
+                "Starting dlm with at most {max_concurrent_downloads} concurrent downloads"
+            ));
+            pbm.log_above_progress_bars(&format!(
+                "Found {nb_of_lines} URLs in input file {input_file}"
+            ));
+
+            // start streaming lines from file
+            let file = tfs::File::open(input_file).await?;
+            let file_reader = tokio::io::BufReader::new(file);
+            Box::pin(LinesStream::new(file_reader.lines()))
         }
-    });
+        Input::Url(url) => {
+            // print startup info
+            pbm.log_above_progress_bars(&format!("Downloading single URL: {url}"));
+            // fake single element stream
+            Box::pin(tokio_stream::once(Ok(url)))
+        }
+    };
 
-    // start streaming lines from file
-    let file = tfs::File::open(input_file).await?;
-    let file_reader = tokio::io::BufReader::new(file);
-    let line_stream = LinesStream::new(file_reader.lines());
     let token_clone = &token.clone();
-    line_stream
+    stream
         .take_until(token_clone.cancelled()) // stop stream on signal
         .for_each_concurrent(max_concurrent_downloads as usize, |link_res| async move {
             // do not start new downloads if the program is stopped
