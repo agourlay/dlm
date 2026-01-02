@@ -29,7 +29,7 @@ impl ProgressBarManager {
         main_pb.set_length(main_pb_len);
 
         // `file_pb_count` progress bars are shared between the threads at anytime
-        let file_pb_count = min(max_concurrent_downloads as u64, main_pb_len);
+        let file_pb_count = min(u64::from(max_concurrent_downloads), main_pb_len);
 
         // If you need a multi-producer multi-consumer channel where only one consumer sees each message, you can use the async-channel crate.
         // There are also channels for use outside of asynchronous Rust, such as std::sync::mpsc and crossbeam::channel.

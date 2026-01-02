@@ -138,21 +138,18 @@ pub fn get_args() -> Result<Arguments, DlmError> {
 
     // Process mutually exclusive inputs
     let input = match (url, input_file) {
-        (None, None) => Err(CliArgumentError {
-            message: "provide either a URL or --input-file".to_string(),
-        }),
-        (Some(_), Some(_)) => Err(CliArgumentError {
+        (None, None) | (Some(_), Some(_)) => Err(CliArgumentError {
             message: "provide either a URL or --input-file".to_string(),
         }),
         (Some(url), None) => Ok(Input::Url(url.trim().to_string())),
         (None, Some(file)) => {
-            let input_file = file.trim().to_string();
-            if !Path::new(&input_file).is_file() {
+            let input_file = file.trim();
+            if Path::new(input_file).is_file() {
+                Ok(Input::File(input_file.to_string()))
+            } else {
                 Err(CliArgumentError {
                     message: "'inputFile' does not exist".to_string(),
                 })
-            } else {
-                Ok(Input::File(input_file))
             }
         }
     };
@@ -211,7 +208,62 @@ mod args_tests {
     use crate::args::command;
 
     #[test]
-    fn verify_command() {
+    fn verify_assert_command() {
         command().debug_assert();
+    }
+
+    #[test]
+    fn verify_help_command() {
+        let help = command().term_width(80).render_long_help();
+        let help_str = format!("{help}");
+        let normalize = |s: &str| {
+            s.lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let actual = normalize(&help_str);
+
+        let expected = normalize(
+            r"
+    Minimal download manager
+    Usage: dlm [OPTIONS] [URL]
+    Arguments:
+    [URL]
+    Direct URL to download
+    Options:
+    -m, --max-concurrent <maxConcurrentDownloads>
+    Maximum number of concurrent downloads
+    [default: 2]
+    -i, --input-file <inputFile>
+    Input file with links
+    -o, --output-dir <outputDir>
+    Output directory for downloads
+    [default: .]
+    -u, --user-agent <userAgent>
+    User-Agent header to use
+    --random-user-agent
+    Use a random User-Agent header
+    --proxy <proxy>
+    HTTP proxy to use
+    -r, --retry <retry>
+    Number of retries on network error
+    [default: 10]
+    --connection-timeout <connectionTimeoutSecs>
+    Connection timeout in seconds
+    [default: 10]
+    -a, --accept <accept>
+    Accept header value
+    --accept-invalid-certs
+    Accept invalid TLS certificates
+    -h, --help
+    Print help
+    -V, --version
+    Print version
+    ",
+        );
+        assert_eq!(actual, expected);
     }
 }

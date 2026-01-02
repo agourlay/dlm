@@ -7,7 +7,7 @@ A minimal HTTP download manager that works just fine.
 
 ## Features
 
-- read URLs from a text file (one entry per line) OR a single URL as argument
+- read URLs from a text file (one entry per line)
 - control maximum number of concurrent downloads
 - resume interrupted downloads if possible (using HTTP range)
 - automatically retry re-establishing download in case of timeout or hanging connection

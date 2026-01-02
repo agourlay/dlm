@@ -25,6 +25,9 @@ use tokio_stream::Stream;
 use tokio_stream::wrappers::LinesStream;
 use tokio_util::sync::CancellationToken;
 
+// Unification type
+type LineStream = Pin<Box<dyn Stream<Item = Result<String, std::io::Error>> + Send>>;
+
 #[tokio::main]
 async fn main() {
     let result = main_result().await;
@@ -104,9 +107,6 @@ async fn main_result() -> Result<(), DlmError> {
     // setup progress bar manager
     let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines).await;
     let pbm_ref = &pbm;
-
-    // Unification type
-    type LineStream = Pin<Box<dyn Stream<Item = Result<String, std::io::Error>> + Send>>;
 
     let stream: LineStream = match input {
         Input::File(input_file) => {
@@ -208,15 +208,13 @@ async fn main_result() -> Result<(), DlmError> {
 
 async fn count_non_empty_lines(input_file: &str) -> Result<u64, DlmError> {
     let file = tfs::File::open(input_file).await?;
-    let file_reader = tokio::io::BufReader::new(file);
-    let stream = LinesStream::new(file_reader.lines());
-    let line_nb = stream
-        .fold(0, |acc, rl| async move {
-            match rl {
-                Ok(l) if !l.trim().is_empty() => acc + 1,
-                _ => acc,
-            }
-        })
-        .await;
-    Ok(line_nb)
+    let reader = tokio::io::BufReader::new(file);
+    let mut lines = reader.lines();
+    let mut count = 0;
+    while let Some(line) = lines.next_line().await? {
+        if !line.trim().is_empty() {
+            count += 1;
+        }
+    }
+    Ok(count)
 }

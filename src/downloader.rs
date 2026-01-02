@@ -61,6 +61,8 @@ pub async fn download(
     };
     let filename_with_extension = format!("{filename_without_extension}.{extension}");
     let final_file_path = &format!("{output_dir}/{filename_with_extension}");
+
+    // skip completed download
     if Path::new(final_file_path).exists() {
         let final_file_size = tfs::File::open(final_file_path)
             .await?
@@ -72,81 +74,81 @@ pub async fn download(
             filename_with_extension,
             pretty_bytes_size(final_file_size)
         );
-        Ok(msg)
-    } else {
-        let url = file_link.url.as_str();
-        let mut head_request = client.head(url);
-        if let Some(accept) = accept_header {
-            head_request = head_request.header("Accept", accept);
-        }
-
-        let head_result = head_request.send().await?;
-        if !head_result.status().is_success() {
-            let status_code = format!("{}", head_result.status());
-            Err(DlmError::ResponseStatusNotSuccess { status_code })
-        } else {
-            let (content_length, accept_ranges) =
-                try_hard_to_extract_headers(head_result.headers(), url, client).await?;
-            // setup progress bar for the file
-            pb_dl.set_message(ProgressBarManager::message_progress_bar(
-                &filename_with_extension,
-            ));
-            if let Some(total_size) = content_length {
-                pb_dl.set_length(total_size);
-            };
-
-            let tmp_name = format!("{output_dir}/{filename_with_extension}.part");
-            let query_range =
-                compute_query_range(pb_dl, pb_manager, content_length, accept_ranges, &tmp_name)
-                    .await?;
-
-            // create/open file.part
-            let mut file = match query_range {
-                Some(_) => {
-                    tfs::OpenOptions::new()
-                        .append(true)
-                        .create(false)
-                        .open(&tmp_name)
-                        .await?
-                }
-                None => tfs::File::create(&tmp_name).await?,
-            };
-
-            // building the request
-            let mut request = client.get(url);
-            if let Some(range) = query_range {
-                request = request.header("Range", range);
-            }
-
-            if let Some(accept) = accept_header {
-                request = request.header("Accept", accept);
-            }
-
-            // initiate file download
-            let mut dl_response = request.send().await?;
-            if !dl_response.status().is_success() {
-                let status_code = format!("{}", head_result.status());
-                Err(DlmError::ResponseStatusNotSuccess { status_code })
-            } else {
-                // incremental save chunk by chunk into part file
-                let chunk_timeout = Duration::from_secs(connection_timeout_secs as u64);
-                while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
-                    file.write_all(&chunk).await?;
-                    file.flush().await?;
-                    pb_dl.inc(chunk.len() as u64);
-                }
-                let final_file_size = file.metadata().await?.len();
-                // rename part file to final
-                tfs::rename(&tmp_name, final_file_path).await?;
-                let msg = format!(
-                    "Completed {} [{}]",
-                    filename_with_extension,
-                    pretty_bytes_size(final_file_size)
-                );
-                Ok(msg)
-            }
-        }
+        return Ok(msg);
     }
+
+    let url = file_link.url.as_str();
+    let mut head_request = client.head(url);
+    if let Some(accept) = accept_header {
+        head_request = head_request.header("Accept", accept);
+    }
+
+    // check existence with HEAD
+    let head_result = head_request.send().await?;
+    if !head_result.status().is_success() {
+        let status_code = format!("{}", head_result.status());
+        return Err(DlmError::ResponseStatusNotSuccess { status_code });
+    }
+
+    let (content_length, accept_ranges) =
+        try_hard_to_extract_headers(head_result.headers(), url, client).await?;
+    // setup progress bar for the file
+    pb_dl.set_message(ProgressBarManager::message_progress_bar(
+        &filename_with_extension,
+    ));
+    if let Some(total_size) = content_length {
+        pb_dl.set_length(total_size);
+    }
+
+    let tmp_name = format!("{output_dir}/{filename_with_extension}.part");
+    let query_range =
+        compute_query_range(pb_dl, pb_manager, content_length, accept_ranges, &tmp_name).await?;
+
+    // create/open file.part
+    let mut file = match &query_range {
+        Some(_) => {
+            tfs::OpenOptions::new()
+                .append(true)
+                .create(false)
+                .open(&tmp_name)
+                .await?
+        }
+        None => tfs::File::create(&tmp_name).await?,
+    };
+
+    // building the request
+    let mut request = client.get(url);
+    if let Some(range) = query_range {
+        request = request.header("Range", range);
+    }
+
+    if let Some(accept) = accept_header {
+        request = request.header("Accept", accept);
+    }
+
+    // initiate file download
+    let mut dl_response = request.send().await?;
+    if !dl_response.status().is_success() {
+        let status_code = format!("{}", head_result.status());
+        return Err(DlmError::ResponseStatusNotSuccess { status_code });
+    }
+
+    // incremental save chunk by chunk into part file
+    let chunk_timeout = Duration::from_secs(u64::from(connection_timeout_secs));
+    while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
+        file.write_all(&chunk).await?;
+        file.flush().await?;
+        pb_dl.inc(chunk.len() as u64);
+    }
+    let final_file_size = file.metadata().await?.len();
+    // rename part file to final
+    tfs::rename(&tmp_name, final_file_path).await?;
+    let msg = format!(
+        "Completed {} [{}]",
+        filename_with_extension,
+        pretty_bytes_size(final_file_size)
+    );
+    Ok(msg)
 }
 
 async fn try_hard_to_extract_headers(
@@ -275,10 +277,7 @@ async fn fetch_filename_extension(
                 }
                 Some(fl) => match fl.extension {
                     Some(ext) => Ok((ext, fl.filename_without_extension)),
-                    None => Ok((
-                        NO_EXTENSION.to_owned(),
-                        fl.filename_without_extension.clone(),
-                    )),
+                    None => Ok((NO_EXTENSION.to_owned(), fl.filename_without_extension)),
                 },
             }
         }

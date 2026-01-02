@@ -11,7 +11,7 @@ pub fn make_client(
     accept_invalid_certs: bool,
 ) -> reqwest::Result<Client> {
     let client_builder = Client::builder()
-        .connect_timeout(Duration::from_secs(connection_timeout_sec as u64))
+        .connect_timeout(Duration::from_secs(u64::from(connection_timeout_sec)))
         .danger_accept_invalid_certs(accept_invalid_certs);
 
     // setup user-agent
