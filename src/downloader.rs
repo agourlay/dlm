@@ -92,6 +92,8 @@ pub async fn download(
 
     let (content_length, accept_ranges) =
         try_hard_to_extract_headers(head_result.headers(), url, client).await?;
+    drop(head_result);
+
     // setup progress bar for the file
     pb_dl.set_message(ProgressBarManager::message_progress_bar(
         &filename_with_extension,
@@ -105,8 +107,9 @@ pub async fn download(
         compute_query_range(pb_dl, pb_manager, content_length, accept_ranges, &tmp_name).await?;
 
     // create/open file.part
+    // no need for a BufWriter because the HTTP chunks are rather large
     let mut file = match &query_range {
-        Some(_) => {
+        Some(_range) => {
             tfs::OpenOptions::new()
                 .append(true)
                 .create(false)
@@ -129,7 +132,7 @@ pub async fn download(
     // initiate file download
     let mut dl_response = request.send().await?;
     if !dl_response.status().is_success() {
-        let status_code = format!("{}", head_result.status());
+        let status_code = format!("{}", dl_response.status());
         return Err(DlmError::ResponseStatusNotSuccess { status_code });
     }
 
@@ -137,10 +140,28 @@ pub async fn download(
     let chunk_timeout = Duration::from_secs(u64::from(connection_timeout_secs));
     while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
         file.write_all(&chunk).await?;
-        file.flush().await?;
         pb_dl.inc(chunk.len() as u64);
     }
+    file.flush().await?; // flush buffer → OS
+    file.sync_all().await?; // sync OS → disk
     let final_file_size = file.metadata().await?.len();
+
+    // check download complete
+    if let Some(expected) = content_length
+        && final_file_size != expected
+    {
+        let message =
+            format!("Incomplete download content_length:{expected} vs file_size:{final_file_size}");
+        return Err(DlmError::other(message));
+    }
+
+    // check if the destination already has a finished file
+    if tfs::metadata(&final_file_path).await.is_ok() {
+        let message =
+            format!("Can't finalize download because the file {final_file_path} already exists");
+        return Err(DlmError::other(message));
+    }
+
     // rename part file to final
     tfs::rename(&tmp_name, final_file_path).await?;
     let msg = format!(
@@ -266,9 +287,7 @@ async fn fetch_filename_extension(
             // check if it is maybe a redirect
             match compute_filename_from_location_header(url, client_no_redirect).await? {
                 None => {
-                    let msg = format!(
-                        "Using placeholder file extension as it could not be determined for {url}"
-                    );
+                    let msg = format!("No extension found for {url}");
                     pb_manager.log_above_progress_bars(&msg);
                     Ok((
                         NO_EXTENSION.to_owned(),

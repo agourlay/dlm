@@ -184,7 +184,7 @@ async fn main_result() -> Result<(), DlmError> {
                     match processed {
                         Ok(info) => Some(info),
                         Err(DlmError::ProgramInterrupted) => None, // no logs on interrupt
-                        Err(e) => Some(format!("Unrecoverable error while processing {link}: {e}")),
+                        Err(e) => Some(format!("Error for {link}: {e}")),
                     }
                 }
             };

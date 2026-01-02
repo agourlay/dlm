@@ -38,6 +38,12 @@ const CONNECTION_CLOSED: &str = "connection closed before message completed";
 const CONNECTION_TIMEOUT: &str = "error trying to connect: operation timed out";
 const BODY_ERROR: &str = "error reading a body from connection";
 
+impl DlmError {
+    pub fn other(message: String) -> Self {
+        Self::Other { message }
+    }
+}
+
 impl From<reqwest::Error> for DlmError {
     fn from(e: reqwest::Error) -> Self {
         //TODO use Reqwest's types instead of guessing from strings https://github.com/seanmonstar/reqwest/issues/757

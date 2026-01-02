@@ -1,6 +1,5 @@
 use crate::dlm_error::DlmError;
 
-use crate::dlm_error::DlmError::Other;
 use std::str;
 
 pub struct FileLink {
@@ -13,12 +12,12 @@ impl FileLink {
     pub fn new(url: &str) -> Result<Self, DlmError> {
         let trimmed = url.trim();
         if trimmed.is_empty() {
-            Err(Other {
-                message: "FileLink cannot be built from an empty URL".to_string(),
-            })
+            Err(DlmError::other(
+                "FileLink cannot be built from an empty URL".to_string(),
+            ))
         } else if trimmed.ends_with('/') {
             let message = format!("FileLink cannot be built with an invalid extension '{trimmed}'");
-            Err(Other { message })
+            Err(DlmError::other(message))
         } else {
             let url_decoded = url_decode(url)?;
             let last_segment_rev: String = url_decoded
@@ -100,7 +99,7 @@ mod file_link_tests {
     #[test]
     fn no_empty_string() {
         match FileLink::new("") {
-            Err(Other { message }) => assert_eq!(
+            Err(DlmError::Other { message }) => assert_eq!(
                 message,
                 "FileLink cannot be built from an empty URL".to_string()
             ),
@@ -125,7 +124,7 @@ mod file_link_tests {
     fn trailing_slash() {
         let url = "https://www.google.com/area51/";
         match FileLink::new(url) {
-            Err(Other { message }) => assert_eq!(
+            Err(DlmError::Other { message }) => assert_eq!(
                 message,
                 "FileLink cannot be built with an invalid extension 'https://www.google.com/area51/'".to_string()
             ),
