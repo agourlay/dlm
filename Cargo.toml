@@ -1,6 +1,6 @@
 [package]
 name = "dlm"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Arnaud Gourlay <arnaud.gourlay@gmail.com>"]
 description = "Minimal download manager"
 repository = "https://github.com/agourlay/dlm"
