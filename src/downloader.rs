@@ -1,6 +1,6 @@
 use indicatif::ProgressBar;
 use reqwest::Client;
-use reqwest::header::HeaderMap;
+use reqwest::header::{ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, HeaderMap, LOCATION};
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{Duration, timeout};
@@ -195,28 +195,26 @@ async fn try_hard_to_extract_headers(
 
 fn content_length_value(headers: &HeaderMap) -> Option<u64> {
     headers
-        .get("content-length")
-        .and_then(|ct_len| ct_len.to_str().ok())
-        .and_then(|ct_len| ct_len.parse().ok())
+        .get(CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse().ok())
 }
 
 fn accept_ranges_value(headers: &HeaderMap) -> Option<String> {
     headers
-        .get("accept-ranges")
-        .and_then(|ct_len| ct_len.to_str().ok())
+        .get(ACCEPT_RANGES)
+        .and_then(|v| v.to_str().ok())
         .map(ToString::to_string)
 }
 
 fn content_disposition_value(headers: &HeaderMap) -> Option<&str> {
     headers
-        .get("content-disposition")
-        .and_then(|ct_len| ct_len.to_str().ok())
+        .get(CONTENT_DISPOSITION)
+        .and_then(|v| v.to_str().ok())
 }
 
 fn location_value(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get("location")
-        .and_then(|ct_len| ct_len.to_str().ok())
+    headers.get(LOCATION).and_then(|v| v.to_str().ok())
 }
 
 async fn compute_query_range(
