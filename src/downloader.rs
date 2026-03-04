@@ -229,7 +229,7 @@ async fn compute_query_range(
 ) -> Result<Option<String>, DlmError> {
     if Path::new(&tmp_name).exists() {
         // get existing file size
-        let tmp_size = tfs::File::open(&tmp_name).await?.metadata().await?.len();
+        let tmp_size = tfs::metadata(&tmp_name).await?.len();
         match (accept_ranges, content_length) {
             (Some(range), Some(cl)) if range == "bytes" => {
                 // set the progress bar to the current size
