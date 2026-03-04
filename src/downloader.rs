@@ -317,12 +317,64 @@ async fn compute_filename_from_disposition_header(
 }
 
 fn parse_filename_header(content_disposition: &str) -> Option<String> {
-    content_disposition
-        .split("attachment; filename=")
-        .last()
-        .and_then(|s| s.strip_prefix('"'))
-        .and_then(|s| s.strip_suffix('"'))
-        .map(ToString::to_string)
+    // Try RFC 6266 filename*= (UTF-8 encoded) first, then fall back to filename=
+    // e.g. filename*=UTF-8''my%20file.txt
+    if let Some(star_value) = find_param(content_disposition, "filename*=") {
+        // strip encoding prefix like "UTF-8''" or "utf-8''"
+        if let Some((_, name)) = star_value.split_once("''") {
+            let decoded = percent_decode_filename(name);
+            if !decoded.is_empty() {
+                return Some(decoded);
+            }
+        }
+    }
+    // Standard filename= parameter (quoted or unquoted)
+    if let Some(value) = find_param(content_disposition, "filename=") {
+        let unquoted = value
+            .strip_prefix('"')
+            .and_then(|s| s.strip_suffix('"'))
+            .unwrap_or(value);
+        if !unquoted.is_empty() {
+            return Some(unquoted.to_string());
+        }
+    }
+    None
+}
+
+/// Extract the value of a named parameter from a header value.
+/// Handles both `; param=value` and `; param="value"` forms.
+fn find_param<'a>(header: &'a str, param: &str) -> Option<&'a str> {
+    // Case-insensitive search for the parameter name
+    let lower = header.to_ascii_lowercase();
+    let param_lower = param.to_ascii_lowercase();
+    let idx = lower.find(&param_lower)?;
+    let value_start = idx + param.len();
+    let rest = &header[value_start..];
+    // Value ends at next `;` (or end of string), trimmed
+    let value = rest.split(';').next()?.trim();
+    if value.is_empty() { None } else { Some(value) }
+}
+
+/// Minimal percent-decoding for filename*= values
+fn percent_decode_filename(input: &str) -> String {
+    let mut result = Vec::new();
+    let mut bytes = input.bytes();
+    while let Some(b) = bytes.next() {
+        if b == b'%' {
+            let decoded = bytes.next().zip(bytes.next()).and_then(|(hi, lo)| {
+                let hex = [hi, lo];
+                let s = std::str::from_utf8(&hex).ok()?;
+                u8::from_str_radix(s, 16).ok()
+            });
+            match decoded {
+                Some(d) => result.push(d),
+                None => result.push(b), // keep '%' as-is on malformed input
+            }
+        } else {
+            result.push(b);
+        }
+    }
+    String::from_utf8_lossy(&result).into_owned()
 }
 
 async fn compute_filename_from_location_header(
@@ -349,9 +401,50 @@ mod downloader_tests {
     use crate::downloader::*;
 
     #[test]
-    fn parse_filename_header_ok() {
-        let header_value = "attachment; filename=\"code-stable-x64-1639562789.tar.gz\"";
-        let parsed = parse_filename_header(header_value);
-        assert_eq!(parsed, Some("code-stable-x64-1639562789.tar.gz".to_owned()));
+    fn parse_filename_header_quoted() {
+        let header = "attachment; filename=\"code-stable-x64-1639562789.tar.gz\"";
+        assert_eq!(
+            parse_filename_header(header),
+            Some("code-stable-x64-1639562789.tar.gz".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_filename_header_unquoted() {
+        let header = "attachment; filename=report.pdf";
+        assert_eq!(parse_filename_header(header), Some("report.pdf".to_owned()));
+    }
+
+    #[test]
+    fn parse_filename_header_inline() {
+        let header = "inline; filename=\"preview.png\"";
+        assert_eq!(
+            parse_filename_header(header),
+            Some("preview.png".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_filename_header_star_utf8() {
+        let header = "attachment; filename*=UTF-8''my%20file.txt";
+        assert_eq!(
+            parse_filename_header(header),
+            Some("my file.txt".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_filename_header_star_takes_precedence() {
+        let header = "attachment; filename=\"fallback.txt\"; filename*=UTF-8''preferred.txt";
+        assert_eq!(
+            parse_filename_header(header),
+            Some("preferred.txt".to_owned())
+        );
+    }
+
+    #[test]
+    fn parse_filename_header_no_filename() {
+        let header = "attachment";
+        assert_eq!(parse_filename_header(header), None);
     }
 }
