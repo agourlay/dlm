@@ -1,6 +1,8 @@
 use indicatif::ProgressBar;
 use reqwest::Client;
-use reqwest::header::{ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, HeaderMap, LOCATION};
+use reqwest::header::{
+    ACCEPT, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, HeaderMap, LOCATION, RANGE,
+};
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{Duration, timeout};
@@ -80,7 +82,7 @@ pub async fn download(
     let url = file_link.url.as_str();
     let mut head_request = client.head(url);
     if let Some(accept) = accept_header {
-        head_request = head_request.header("Accept", accept);
+        head_request = head_request.header(ACCEPT, accept);
     }
 
     // check existence with HEAD
@@ -122,11 +124,11 @@ pub async fn download(
     // building the request
     let mut request = client.get(url);
     if let Some(range) = query_range {
-        request = request.header("Range", range);
+        request = request.header(RANGE, range);
     }
 
     if let Some(accept) = accept_header {
-        request = request.header("Accept", accept);
+        request = request.header(ACCEPT, accept);
     }
 
     // initiate file download
