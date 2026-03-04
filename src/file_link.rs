@@ -21,15 +21,11 @@ impl FileLink {
             Err(DlmError::other(message))
         } else {
             let url_decoded = url_decode(url)?;
-            let last_segment_rev: String = url_decoded
-                .chars()
-                .rev()
-                .take_while(|c| c != &'/')
-                .collect();
-            // ideally the last_segment is the filename
-            let last_segment = last_segment_rev.chars().rev().collect::<String>();
+            let last_segment = url_decoded
+                .rsplit_once('/')
+                .map_or(&*url_decoded, |(_, s)| s);
             let (extension, filename_without_extension) =
-                Self::extract_extension_from_filename(&last_segment);
+                Self::extract_extension_from_filename(last_segment);
 
             let url = url.to_string();
             let file_link = Self {
