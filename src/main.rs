@@ -80,7 +80,6 @@ async fn main_result() -> Result<(), DlmError> {
         connection_timeout_secs,
         accept_invalid_certs,
     )?;
-    let c_ref = &client;
     let client_no_redirect = make_client(
         user_agent.as_ref(),
         proxy.as_ref(),
@@ -88,8 +87,9 @@ async fn main_result() -> Result<(), DlmError> {
         connection_timeout_secs,
         accept_invalid_certs,
     )?;
-    let c_no_redirect_ref = &client_no_redirect;
-    let accept_ref = accept.as_ref();
+    let client = &client;
+    let client_no_redirect = &client_no_redirect;
+    let accept = &accept;
     // trim trailing slash if any
     let od_ref = &output_dir
         .strip_suffix('/')
@@ -106,7 +106,7 @@ async fn main_result() -> Result<(), DlmError> {
 
     // setup progress bar manager
     let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines).await;
-    let pbm_ref = &pbm;
+    let pbm = &pbm;
 
     let stream: LineStream = match input {
         Input::File(input_file) => {
@@ -146,7 +146,7 @@ async fn main_result() -> Result<(), DlmError> {
                         None
                     } else {
                         // claim a progress bar for the upcoming download
-                        let dl_pb = pbm_ref
+                        let dl_pb = pbm
                             .rx
                             .recv()
                             .await
@@ -160,24 +160,23 @@ async fn main_result() -> Result<(), DlmError> {
                             || {
                                 download_link(
                                     &link,
-                                    c_ref,
-                                    c_no_redirect_ref,
+                                    client,
+                                    client_no_redirect,
                                     connection_timeout_secs,
                                     od_ref,
                                     token_clone,
                                     &dl_pb,
-                                    pbm_ref,
-                                    accept_ref,
+                                    pbm,
+                                    accept.as_ref(),
                                 )
                             },
-                            |e: &DlmError| retry_handler(e, pbm_ref, &link),
+                            |e: &DlmError| retry_handler(e, pbm, &link),
                         )
                         .await;
 
                         // reset & release progress bar
                         ProgressBarManager::reset_progress_bar(&dl_pb);
-                        pbm_ref
-                            .tx
+                        pbm.tx
                             .send(dl_pb)
                             .await
                             .expect("releasing progress bar should not fail");
@@ -192,8 +191,8 @@ async fn main_result() -> Result<(), DlmError> {
                 }
             };
             if let Some(message) = message {
-                pbm_ref.log_above_progress_bars(&message);
-                pbm_ref.increment_global_progress();
+                pbm.log_above_progress_bars(&message);
+                pbm.increment_global_progress();
             }
         })
         .await;
@@ -204,7 +203,7 @@ async fn main_result() -> Result<(), DlmError> {
         Err(DlmError::ProgramInterrupted)
     } else {
         // cleanup phase
-        pbm_ref.finish_all().await?;
+        pbm.finish_all().await?;
         Ok(())
     }
 }
