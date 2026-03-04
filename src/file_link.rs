@@ -2,6 +2,7 @@ use crate::dlm_error::DlmError;
 
 use std::str;
 
+#[derive(Debug)]
 pub struct FileLink {
     pub url: String,
     pub filename_without_extension: String,
@@ -99,7 +100,7 @@ mod file_link_tests {
                 message,
                 "FileLink cannot be built from an empty URL".to_string()
             ),
-            _ => assert_eq!(true, false),
+            other => panic!("expected error, got {other:?}"),
         }
     }
 
@@ -112,7 +113,7 @@ mod file_link_tests {
                 assert_eq!(fl.filename_without_extension, "area51".to_string());
                 assert_eq!(fl.extension, Some("txt".to_string()));
             }
-            _ => assert_eq!(true, false),
+            other => panic!("expected error, got {other:?}"),
         }
     }
 
@@ -124,7 +125,7 @@ mod file_link_tests {
                 message,
                 "FileLink cannot be built with an invalid extension 'https://www.google.com/area51/'".to_string()
             ),
-            _ => assert_eq!(true, false),
+            other => panic!("expected error, got {other:?}"),
         }
     }
 
