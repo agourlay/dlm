@@ -41,23 +41,10 @@ impl FileLink {
     }
 
     pub fn extract_extension_from_filename(filename: &str) -> (Option<String>, String) {
-        if filename.contains('.') {
-            let after_dot_rev: String = filename.chars().rev().take_while(|c| c != &'.').collect();
-            // remove potential query params
-            let ext: String = after_dot_rev
-                .chars()
-                .rev()
-                .take_while(|c| c != &'?')
-                .collect();
-
-            let tmp: String = filename
-                .chars()
-                .rev()
-                .skip(after_dot_rev.len() + 1) // after_dot_rev to exclude query params and '+ 1' for the dot
-                .collect();
-
-            let filename_without_extension: String = tmp.chars().rev().collect();
-            (Some(ext), filename_without_extension)
+        if let Some((before, after)) = filename.rsplit_once('.') {
+            // remove potential query params from extension
+            let ext = after.split('?').next().unwrap_or(after);
+            (Some(ext.to_string()), before.to_string())
         } else {
             // no extension found, the file name will be used
             // sanitize as it contains query params
