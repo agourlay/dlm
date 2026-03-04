@@ -182,12 +182,13 @@ async fn try_hard_to_extract_headers(
     let tuple = match content_length_value(head_headers) {
         Some(0) => {
             // if "content-length": "0" then it is likely the server does not support HEAD, let's try harder with a GET
-            let get_result = client.get(url).send().await?;
-            let get_headers = get_result.headers();
-            (
-                content_length_value(get_headers),
-                accept_ranges_value(get_headers),
-            )
+            // Use Range: bytes=0-0 to minimize data transfer if supported
+            let get_result = client.get(url).header(RANGE, "bytes=0-0").send().await?;
+            // Extract headers before dropping the response to avoid buffering the body
+            let cl = content_length_value(get_result.headers());
+            let ar = accept_ranges_value(get_result.headers());
+            drop(get_result);
+            (cl, ar)
         }
         ct_option @ Some(_) => (ct_option, accept_ranges_value(head_headers)),
         _ => (None, None),
