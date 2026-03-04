@@ -68,21 +68,30 @@ impl FileLink {
     }
 }
 
-// taken from https://github.com/bt/rust_urlencoding/blob/master/src/lib.rs#L20
+// adapted from https://github.com/bt/rust_urlencoding/blob/master/src/lib.rs#L20
 fn url_decode(data: &str) -> Result<String, DlmError> {
     let mut unescaped_bytes: Vec<u8> = Vec::new();
     let mut bytes = data.bytes();
-    // If validate_urlencoded_str returned Ok, then we know
-    // every '%' is followed by 2 hex characters
     while let Some(b) = bytes.next() {
         match b as char {
             '%' => {
-                let bytes_to_decode = &[bytes.next().unwrap(), bytes.next().unwrap()];
-                let hex_str = str::from_utf8(bytes_to_decode).unwrap();
-                unescaped_bytes.push(u8::from_str_radix(hex_str, 16).unwrap());
+                let hi = bytes.next().ok_or_else(|| DlmError::UrlDecodeError {
+                    message: format!("incomplete percent-encoding in '{data}'"),
+                })?;
+                let lo = bytes.next().ok_or_else(|| DlmError::UrlDecodeError {
+                    message: format!("incomplete percent-encoding in '{data}'"),
+                })?;
+                let hex_bytes = [hi, lo];
+                let hex_str = str::from_utf8(&hex_bytes).map_err(|e| DlmError::UrlDecodeError {
+                    message: format!("invalid percent-encoding in '{data}': {e}"),
+                })?;
+                let decoded =
+                    u8::from_str_radix(hex_str, 16).map_err(|e| DlmError::UrlDecodeError {
+                        message: format!("invalid hex '{hex_str}' in '{data}': {e}"),
+                    })?;
+                unescaped_bytes.push(decoded);
             }
             _ => {
-                // Assume whoever did the encoding intended what we got
                 unescaped_bytes.push(b);
             }
         }
