@@ -9,8 +9,8 @@ const PENDING: &str = "pending";
 pub struct ProgressBarManager {
     main_pb: ProgressBar,
     file_pb_count: u64,
-    pub tx: Sender<ProgressBar>,
-    pub rx: Receiver<ProgressBar>,
+    tx: Sender<ProgressBar>,
+    rx: Receiver<ProgressBar>,
 }
 
 impl ProgressBarManager {
@@ -91,8 +91,19 @@ impl ProgressBarManager {
         pb.println(format!("[{now}] {msg}"));
     }
 
-    pub fn reset_progress_bar(pb: &ProgressBar) {
+    pub async fn claim_progress_bar(&self) -> ProgressBar {
+        self.rx
+            .recv()
+            .await
+            .expect("claiming progress bar should not fail")
+    }
+
+    pub async fn release_progress_bar(&self, pb: ProgressBar) {
         pb.reset();
         pb.set_message(Self::message_progress_bar(PENDING));
+        self.tx
+            .send(pb)
+            .await
+            .expect("releasing progress bar should not fail");
     }
 }

@@ -131,7 +131,7 @@ async fn main_result() -> Result<(), DlmError> {
         }
     };
 
-    let token_clone = &token.clone();
+    let token_clone = &token;
     stream
         .take_until(token_clone.cancelled()) // stop stream on signal
         .for_each_concurrent(max_concurrent_downloads as usize, |link_res| async move {
@@ -146,11 +146,7 @@ async fn main_result() -> Result<(), DlmError> {
                         None
                     } else {
                         // claim a progress bar for the upcoming download
-                        let dl_pb = pbm
-                            .rx
-                            .recv()
-                            .await
-                            .expect("claiming progress bar should not fail");
+                        let dl_pb = pbm.claim_progress_bar().await;
 
                         // exponential backoff retries for network errors
                         let retry_strategy = retry_strategy(retry);
@@ -175,11 +171,7 @@ async fn main_result() -> Result<(), DlmError> {
                         .await;
 
                         // reset & release progress bar
-                        ProgressBarManager::reset_progress_bar(&dl_pb);
-                        pbm.tx
-                            .send(dl_pb)
-                            .await
-                            .expect("releasing progress bar should not fail");
+                        pbm.release_progress_bar(dl_pb).await;
 
                         // extract result
                         match processed {

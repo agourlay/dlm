@@ -248,13 +248,13 @@ async fn compute_query_range(
                 Ok(None)
             }
         }
+    } else if accept_ranges.is_none() {
+        let log = format!(
+            "The download of file {tmp_name} should not be interrupted because the server does not support resuming the download (range bytes)"
+        );
+        pb_manager.log_above_progress_bars(&log);
+        Ok(None)
     } else {
-        if accept_ranges.is_none() {
-            let log = format!(
-                "The download of file {tmp_name} should not be interrupted because the server does not support resuming the download (range bytes)"
-            );
-            pb_manager.log_above_progress_bars(&log);
-        }
         Ok(None)
     }
 }
