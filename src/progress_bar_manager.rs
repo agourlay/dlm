@@ -1,7 +1,7 @@
 use crate::DlmError;
 use async_channel::{Receiver, Sender};
-use chrono::Local;
 use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
+use jiff::Zoned;
 use std::cmp::{Ordering, min};
 
 const PENDING: &str = "pending";
@@ -87,11 +87,8 @@ impl ProgressBarManager {
     }
 
     fn log_above_progress_bar(pb: &ProgressBar, msg: &str) {
-        pb.println(format!(
-            "[{}] {}",
-            Local::now().naive_local().format("%Y-%m-%d %H:%M:%S"),
-            msg
-        ));
+        let now = Zoned::now().strftime("%Y-%m-%d %H:%M:%S");
+        pb.println(format!("[{now}] {msg}"));
     }
 
     pub fn reset_progress_bar(pb: &ProgressBar) {
