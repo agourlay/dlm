@@ -27,7 +27,7 @@ pub async fn download_link(
     token: &CancellationToken,
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
-    accept_header: Option<&String>,
+    accept_header: Option<&str>,
 ) -> Result<String, DlmError> {
     // select between stop signal and download
     select! {
@@ -45,7 +45,7 @@ pub async fn download(
     output_dir: &str,
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
-    accept_header: Option<&String>,
+    accept_header: Option<&str>,
 ) -> Result<String, DlmError> {
     let file_link = FileLink::new(raw_link)?;
     let (extension, filename_without_extension) = match file_link.extension {

@@ -75,14 +75,14 @@ async fn main_result() -> Result<(), DlmError> {
     // setup HTTP clients
     let client = make_client(
         user_agent.as_ref(),
-        proxy.as_ref(),
+        proxy.as_deref(),
         true,
         connection_timeout_secs,
         accept_invalid_certs,
     )?;
     let client_no_redirect = make_client(
         user_agent.as_ref(),
-        proxy.as_ref(),
+        proxy.as_deref(),
         false,
         connection_timeout_secs,
         accept_invalid_certs,
@@ -167,7 +167,7 @@ async fn main_result() -> Result<(), DlmError> {
                                     token_clone,
                                     &dl_pb,
                                     pbm,
-                                    accept.as_ref(),
+                                    accept.as_deref(),
                                 )
                             },
                             |e: &DlmError| retry_handler(e, pbm, &link),

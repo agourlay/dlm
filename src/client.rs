@@ -5,7 +5,7 @@ use std::time::Duration;
 
 pub fn make_client(
     user_agent: Option<&UserAgent>,
-    proxy: Option<&String>,
+    proxy: Option<&str>,
     redirect: bool,
     connection_timeout_sec: u32,
     accept_invalid_certs: bool,
