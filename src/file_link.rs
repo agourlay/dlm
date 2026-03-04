@@ -109,7 +109,7 @@ mod file_link_tests {
                 assert_eq!(fl.filename_without_extension, "area51".to_string());
                 assert_eq!(fl.extension, Some("txt".to_string()));
             }
-            other => panic!("expected error, got {other:?}"),
+            other => panic!("unexpected error, got {other:?}"),
         }
     }
 

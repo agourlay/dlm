@@ -131,12 +131,12 @@ async fn main_result() -> Result<(), DlmError> {
         }
     };
 
-    let token_clone = &token;
+    let token_ref = &token;
     stream
-        .take_until(token_clone.cancelled()) // stop stream on signal
+        .take_until(token_ref.cancelled()) // stop stream on signal
         .for_each_concurrent(max_concurrent_downloads as usize, |link_res| async move {
             // do not start new downloads if the program is stopped
-            if token_clone.is_cancelled() {
+            if token_ref.is_cancelled() {
                 return;
             }
             let message = match link_res {
@@ -160,7 +160,7 @@ async fn main_result() -> Result<(), DlmError> {
                                     client_no_redirect,
                                     connection_timeout_secs,
                                     od_ref,
-                                    token_clone,
+                                    token_ref,
                                     &dl_pb,
                                     pbm,
                                     accept.as_deref(),

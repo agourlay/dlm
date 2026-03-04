@@ -66,11 +66,7 @@ pub async fn download(
 
     // skip completed download
     if Path::new(final_file_path).exists() {
-        let final_file_size = tfs::File::open(final_file_path)
-            .await?
-            .metadata()
-            .await?
-            .len();
+        let final_file_size = tfs::metadata(final_file_path).await?.len();
         let msg = format!(
             "Skipping {} because the file is already completed [{}]",
             filename_with_extension,
