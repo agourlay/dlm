@@ -70,12 +70,6 @@ async fn main_result() -> Result<(), DlmError> {
         }
     });
 
-    // trim trailing slash if any
-    let output_dir = output_dir
-        .strip_suffix('/')
-        .unwrap_or(&output_dir)
-        .to_string();
-
     let nb_of_lines = match &input {
         Input::File(input_file) => count_non_empty_lines(input_file).await?,
         Input::Url(_) => 1,
