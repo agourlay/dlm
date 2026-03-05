@@ -69,156 +69,155 @@ impl<'a> DownloadContext<'a> {
     }
 }
 
-pub async fn download_link(
-    raw_link: &str,
-    ctx: &DownloadContext<'_>,
-    pb_dl: &ProgressBar,
-) -> Result<String, DlmError> {
-    // select between stop signal and download
-    select! {
-        () = ctx.token.cancelled() => Err(DlmError::ProgramInterrupted),
-        dl = download(raw_link, ctx, pb_dl) => dl,
-    }
-}
-
-async fn download(
-    raw_link: &str,
-    ctx: &DownloadContext<'_>,
-    pb_dl: &ProgressBar,
-) -> Result<String, DlmError> {
-    let file_link = FileLink::new(raw_link)?;
-    let url = file_link.url.as_str();
-    let output_dir = Path::new(ctx.output_dir);
-
-    // single HEAD request to check existence and extract all needed headers
-    let mut head_request = ctx.client.head(url);
-    if let Some(accept) = ctx.accept_header {
-        head_request = head_request.header(ACCEPT, accept);
-    }
-    let head_result = head_request.send().await?;
-    if !head_result.status().is_success() {
-        let status_code = format!("{}", head_result.status());
-        return Err(DlmError::ResponseStatusNotSuccess { status_code });
-    }
-
-    let (content_length, accept_ranges) =
-        try_hard_to_extract_headers(head_result.headers(), url, &ctx.client).await?;
-    let disposition_filename =
-        content_disposition_value(head_result.headers()).and_then(parse_filename_header);
-    drop(head_result);
-
-    // resolve filename and extension
-    let (extension, filename_without_extension) = match file_link.extension {
-        Some(ext) => (ext, file_link.filename_without_extension),
-        None => {
-            resolve_filename_extension(
-                url,
-                &file_link.filename_without_extension,
-                disposition_filename,
-                &ctx.client_no_redirect,
-                ctx.pb_manager,
-            )
-            .await?
+impl DownloadContext<'_> {
+    pub async fn download_link(
+        &self,
+        raw_link: &str,
+        pb_dl: &ProgressBar,
+    ) -> Result<String, DlmError> {
+        // select between stop signal and download
+        select! {
+            () = self.token.cancelled() => Err(DlmError::ProgramInterrupted),
+            dl = self.download(raw_link, pb_dl) => dl,
         }
-    };
-    let filename_with_extension = format!("{filename_without_extension}.{extension}");
-    let final_file_path = output_dir.join(&filename_with_extension);
+    }
 
-    // skip completed download
-    if final_file_path.exists() {
-        let final_file_size = tfs::metadata(&final_file_path).await?.len();
+    async fn download(&self, raw_link: &str, pb_dl: &ProgressBar) -> Result<String, DlmError> {
+        let file_link = FileLink::new(raw_link)?;
+        let url = file_link.url.as_str();
+        let output_dir = Path::new(self.output_dir);
+
+        // single HEAD request to check existence and extract all needed headers
+        let mut head_request = self.client.head(url);
+        if let Some(accept) = self.accept_header {
+            head_request = head_request.header(ACCEPT, accept);
+        }
+        let head_result = head_request.send().await?;
+        if !head_result.status().is_success() {
+            let status_code = format!("{}", head_result.status());
+            return Err(DlmError::ResponseStatusNotSuccess { status_code });
+        }
+
+        let (content_length, accept_ranges) =
+            try_hard_to_extract_headers(head_result.headers(), url, &self.client).await?;
+        let disposition_filename =
+            content_disposition_value(head_result.headers()).and_then(parse_filename_header);
+        drop(head_result);
+
+        // resolve filename and extension
+        let (extension, filename_without_extension) = match file_link.extension {
+            Some(ext) => (ext, file_link.filename_without_extension),
+            None => {
+                resolve_filename_extension(
+                    url,
+                    &file_link.filename_without_extension,
+                    disposition_filename,
+                    &self.client_no_redirect,
+                    self.pb_manager,
+                )
+                .await?
+            }
+        };
+        let filename_with_extension = format!("{filename_without_extension}.{extension}");
+        let final_file_path = output_dir.join(&filename_with_extension);
+
+        // skip completed download
+        if final_file_path.exists() {
+            let final_file_size = tfs::metadata(&final_file_path).await?.len();
+            let msg = format!(
+                "Skipping {} because the file is already completed [{}]",
+                filename_with_extension,
+                pretty_bytes_size(final_file_size)
+            );
+            return Ok(msg);
+        }
+
+        // setup progress bar for the file
+        pb_dl.set_message(ProgressBarManager::message_progress_bar(
+            &filename_with_extension,
+        ));
+        if let Some(total_size) = content_length {
+            pb_dl.set_length(total_size);
+        }
+
+        let tmp_name = output_dir.join(format!("{filename_with_extension}.part"));
+        let query_range = compute_query_range(
+            pb_dl,
+            self.pb_manager,
+            content_length,
+            accept_ranges,
+            &tmp_name,
+        )
+        .await?;
+
+        // create/open file.part
+        // no need for a BufWriter because the HTTP chunks are rather large
+        let mut file = match &query_range {
+            Some(_range) => {
+                tfs::OpenOptions::new()
+                    .append(true)
+                    .create(false)
+                    .open(&tmp_name)
+                    .await?
+            }
+            None => tfs::File::create(&tmp_name).await?,
+        };
+
+        // building the request
+        let mut request = self.client.get(url);
+        if let Some(range) = query_range {
+            request = request.header(RANGE, range);
+        }
+
+        if let Some(accept) = self.accept_header {
+            request = request.header(ACCEPT, accept);
+        }
+
+        // initiate file download
+        let mut dl_response = request.send().await?;
+        if !dl_response.status().is_success() {
+            let status_code = format!("{}", dl_response.status());
+            return Err(DlmError::ResponseStatusNotSuccess { status_code });
+        }
+
+        // incremental save chunk by chunk into part file
+        let chunk_timeout = Duration::from_secs(u64::from(self.connection_timeout_secs));
+        while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
+            file.write_all(&chunk).await?;
+            pb_dl.inc(chunk.len() as u64);
+        }
+        file.flush().await?; // flush buffer → OS
+        file.sync_all().await?; // sync OS → disk
+        let final_file_size = file.metadata().await?.len();
+
+        // check download complete
+        if let Some(expected) = content_length
+            && final_file_size != expected
+        {
+            let message = format!(
+                "Incomplete download content_length:{expected} vs file_size:{final_file_size}"
+            );
+            return Err(DlmError::other(message));
+        }
+
+        // check if the destination already has a finished file
+        if tfs::metadata(&final_file_path).await.is_ok() {
+            let message = format!(
+                "Can't finalize download because the file {} already exists",
+                final_file_path.display()
+            );
+            return Err(DlmError::other(message));
+        }
+
+        // rename part file to final
+        tfs::rename(&tmp_name, final_file_path).await?;
         let msg = format!(
-            "Skipping {} because the file is already completed [{}]",
+            "Completed {} [{}]",
             filename_with_extension,
             pretty_bytes_size(final_file_size)
         );
-        return Ok(msg);
+        Ok(msg)
     }
-
-    // setup progress bar for the file
-    pb_dl.set_message(ProgressBarManager::message_progress_bar(
-        &filename_with_extension,
-    ));
-    if let Some(total_size) = content_length {
-        pb_dl.set_length(total_size);
-    }
-
-    let tmp_name = output_dir.join(format!("{filename_with_extension}.part"));
-    let query_range = compute_query_range(
-        pb_dl,
-        ctx.pb_manager,
-        content_length,
-        accept_ranges,
-        &tmp_name,
-    )
-    .await?;
-
-    // create/open file.part
-    // no need for a BufWriter because the HTTP chunks are rather large
-    let mut file = match &query_range {
-        Some(_range) => {
-            tfs::OpenOptions::new()
-                .append(true)
-                .create(false)
-                .open(&tmp_name)
-                .await?
-        }
-        None => tfs::File::create(&tmp_name).await?,
-    };
-
-    // building the request
-    let mut request = ctx.client.get(url);
-    if let Some(range) = query_range {
-        request = request.header(RANGE, range);
-    }
-
-    if let Some(accept) = ctx.accept_header {
-        request = request.header(ACCEPT, accept);
-    }
-
-    // initiate file download
-    let mut dl_response = request.send().await?;
-    if !dl_response.status().is_success() {
-        let status_code = format!("{}", dl_response.status());
-        return Err(DlmError::ResponseStatusNotSuccess { status_code });
-    }
-
-    // incremental save chunk by chunk into part file
-    let chunk_timeout = Duration::from_secs(u64::from(ctx.connection_timeout_secs));
-    while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
-        file.write_all(&chunk).await?;
-        pb_dl.inc(chunk.len() as u64);
-    }
-    file.flush().await?; // flush buffer → OS
-    file.sync_all().await?; // sync OS → disk
-    let final_file_size = file.metadata().await?.len();
-
-    // check download complete
-    if let Some(expected) = content_length
-        && final_file_size != expected
-    {
-        let message =
-            format!("Incomplete download content_length:{expected} vs file_size:{final_file_size}");
-        return Err(DlmError::other(message));
-    }
-
-    // check if the destination already has a finished file
-    if tfs::metadata(&final_file_path).await.is_ok() {
-        let message = format!(
-            "Can't finalize download because the file {} already exists",
-            final_file_path.display()
-        );
-        return Err(DlmError::other(message));
-    }
-
-    // rename part file to final
-    tfs::rename(&tmp_name, final_file_path).await?;
-    let msg = format!(
-        "Completed {} [{}]",
-        filename_with_extension,
-        pretty_bytes_size(final_file_size)
-    );
-    Ok(msg)
 }
 
 async fn try_hard_to_extract_headers(

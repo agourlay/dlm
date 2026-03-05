@@ -11,7 +11,7 @@ mod utils;
 use crate::DlmError::EmptyInputFile;
 use crate::args::{Arguments, Input, get_args};
 use crate::dlm_error::DlmError;
-use crate::downloader::{ClientConfig, DownloadContext, download_link};
+use crate::downloader::{ClientConfig, DownloadContext};
 use crate::progress_bar_manager::ProgressBarManager;
 use crate::retry::{retry_handler, retry_strategy};
 use futures_util::stream::StreamExt;
@@ -141,7 +141,7 @@ async fn main_result() -> Result<(), DlmError> {
 
                         let processed = RetryIf::spawn(
                             retry_strategy,
-                            || download_link(&link, ctx, &dl_pb),
+                            || ctx.download_link(&link, &dl_pb),
                             |e: &DlmError| retry_handler(e, pbm, &link),
                         )
                         .await;
