@@ -98,7 +98,7 @@ impl DownloadContext<'_> {
             return Err(DlmError::ResponseStatusNotSuccess { status_code });
         }
 
-        let (content_length, accept_ranges) =
+        let (content_length, supports_range) =
             try_hard_to_extract_headers(head_result.headers(), url, &self.client).await?;
         let disposition_filename =
             content_disposition_value(head_result.headers()).and_then(parse_filename_header);
@@ -145,7 +145,7 @@ impl DownloadContext<'_> {
             pb_dl,
             self.pb_manager,
             content_length,
-            accept_ranges,
+            supports_range,
             &tmp_name,
         )
         .await?;
@@ -224,7 +224,7 @@ async fn try_hard_to_extract_headers(
     head_headers: &HeaderMap,
     url: &str,
     client: &Client,
-) -> Result<(Option<u64>, Option<String>), DlmError> {
+) -> Result<(Option<u64>, bool), DlmError> {
     let tuple = match content_length_value(head_headers) {
         Some(0) => {
             // if "content-length": "0" then it is likely the server does not support HEAD, let's try harder with a GET
@@ -232,12 +232,12 @@ async fn try_hard_to_extract_headers(
             let get_result = client.get(url).header(RANGE, "bytes=0-0").send().await?;
             // Extract headers before dropping the response to avoid buffering the body
             let cl = content_length_value(get_result.headers());
-            let ar = accept_ranges_value(get_result.headers());
+            let ar = supports_range_bytes(get_result.headers());
             drop(get_result);
             (cl, ar)
         }
-        ct_option @ Some(_) => (ct_option, accept_ranges_value(head_headers)),
-        _ => (None, None),
+        ct_option @ Some(_) => (ct_option, supports_range_bytes(head_headers)),
+        _ => (None, false),
     };
     Ok(tuple)
 }
@@ -249,11 +249,11 @@ fn content_length_value(headers: &HeaderMap) -> Option<u64> {
         .and_then(|v| v.parse().ok())
 }
 
-fn accept_ranges_value(headers: &HeaderMap) -> Option<String> {
+fn supports_range_bytes(headers: &HeaderMap) -> bool {
     headers
         .get(ACCEPT_RANGES)
         .and_then(|v| v.to_str().ok())
-        .map(ToString::to_string)
+        .is_some_and(|v| v == "bytes")
 }
 
 fn content_disposition_value(headers: &HeaderMap) -> Option<&str> {
@@ -270,14 +270,14 @@ async fn compute_query_range(
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
     content_length: Option<u64>,
-    accept_ranges: Option<String>,
+    supports_range: bool,
     tmp_name: &Path,
 ) -> Result<Option<String>, DlmError> {
     if tmp_name.exists() {
         // get existing file size
         let tmp_size = tfs::metadata(tmp_name).await?.len();
-        match (accept_ranges, content_length) {
-            (Some(range), Some(cl)) if range == "bytes" => {
+        match (supports_range, content_length) {
+            (true, Some(cl)) => {
                 // set the progress bar to the current size
                 pb_dl.set_position(tmp_size);
                 // reset the elapsed time to avoid showing a really large speed
@@ -295,7 +295,7 @@ async fn compute_query_range(
                 Ok(None)
             }
         }
-    } else if accept_ranges.is_none() {
+    } else if !supports_range {
         let log = format!(
             "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
             tmp_name.display()
