@@ -23,7 +23,7 @@ use tokio_stream::Stream;
 use tokio_stream::wrappers::LinesStream;
 use tokio_util::sync::CancellationToken;
 
-// Unification type
+// type alias for the URL stream
 type LineStream = Pin<Box<dyn Stream<Item = Result<String, std::io::Error>> + Send>>;
 
 #[tokio::main]

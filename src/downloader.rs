@@ -67,9 +67,7 @@ impl<'a> DownloadContext<'a> {
             accept_header,
         })
     }
-}
 
-impl DownloadContext<'_> {
     pub async fn download_link(
         &self,
         raw_link: &str,
@@ -108,12 +106,10 @@ impl DownloadContext<'_> {
         let (extension, filename_without_extension) = match file_link.extension {
             Some(ext) => (ext, file_link.filename_without_extension),
             None => {
-                resolve_filename_extension(
+                self.resolve_filename_extension(
                     url,
                     &file_link.filename_without_extension,
                     disposition_filename,
-                    &self.client_no_redirect,
-                    self.pb_manager,
                 )
                 .await?
             }
@@ -218,6 +214,65 @@ impl DownloadContext<'_> {
         );
         Ok(msg)
     }
+
+    // Resolve filename when the URL does not contain the extension (e.g. redirect)
+    // Uses the Content-Disposition filename already extracted from the HEAD response
+    async fn resolve_filename_extension(
+        &self,
+        url: &str,
+        filename_without_extension: &str,
+        disposition_filename: Option<String>,
+    ) -> Result<(String, String), DlmError> {
+        // try to get the file name from the Content-Disposition header
+        if let Some(fh) = disposition_filename {
+            let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
+            if let Some(e) = ext {
+                return Ok((e, filename));
+            }
+            let msg =
+                format!("Could not determine file extension based on header {filename} for {url}");
+            self.pb_manager.log_above_progress_bars(&msg);
+            return Ok((
+                NO_EXTENSION.to_owned(),
+                filename_without_extension.to_string(),
+            ));
+        }
+
+        // check if it is maybe a redirect
+        match self.compute_filename_from_location_header(url).await? {
+            None => {
+                let msg = format!("No extension found for {url}");
+                self.pb_manager.log_above_progress_bars(&msg);
+                Ok((
+                    NO_EXTENSION.to_owned(),
+                    filename_without_extension.to_string(),
+                ))
+            }
+            Some(fl) => match fl.extension {
+                Some(ext) => Ok((ext, fl.filename_without_extension)),
+                None => Ok((NO_EXTENSION.to_owned(), fl.filename_without_extension)),
+            },
+        }
+    }
+
+    async fn compute_filename_from_location_header(
+        &self,
+        url: &str,
+    ) -> Result<Option<FileLink>, DlmError> {
+        let head_result = self.client_no_redirect.head(url).send().await?;
+        if head_result.status().is_redirection() {
+            // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location
+            match location_value(head_result.headers()) {
+                None => Ok(None),
+                Some(location) => {
+                    let fl = FileLink::new(location)?;
+                    Ok(Some(fl))
+                }
+            }
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 async fn try_hard_to_extract_headers(
@@ -307,47 +362,6 @@ async fn compute_query_range(
     }
 }
 
-// Resolve filename when the URL does not contain the extension (e.g. redirect)
-// Uses the Content-Disposition filename already extracted from the HEAD response
-async fn resolve_filename_extension(
-    url: &str,
-    filename_without_extension: &str,
-    disposition_filename: Option<String>,
-    client_no_redirect: &Client,
-    pb_manager: &ProgressBarManager,
-) -> Result<(String, String), DlmError> {
-    // try to get the file name from the Content-Disposition header
-    if let Some(fh) = disposition_filename {
-        let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
-        if let Some(e) = ext {
-            return Ok((e, filename));
-        }
-        let msg =
-            format!("Could not determine file extension based on header {filename} for {url}");
-        pb_manager.log_above_progress_bars(&msg);
-        return Ok((
-            NO_EXTENSION.to_owned(),
-            filename_without_extension.to_string(),
-        ));
-    }
-
-    // check if it is maybe a redirect
-    match compute_filename_from_location_header(url, client_no_redirect).await? {
-        None => {
-            let msg = format!("No extension found for {url}");
-            pb_manager.log_above_progress_bars(&msg);
-            Ok((
-                NO_EXTENSION.to_owned(),
-                filename_without_extension.to_string(),
-            ))
-        }
-        Some(fl) => match fl.extension {
-            Some(ext) => Ok((ext, fl.filename_without_extension)),
-            None => Ok((NO_EXTENSION.to_owned(), fl.filename_without_extension)),
-        },
-    }
-}
-
 fn parse_filename_header(content_disposition: &str) -> Option<String> {
     // Try RFC 6266 filename*= (UTF-8 encoded) first, then fall back to filename=
     // e.g. filename*=UTF-8''my%20file.txt
@@ -407,25 +421,6 @@ fn percent_decode_filename(input: &str) -> String {
         }
     }
     String::from_utf8_lossy(&result).into_owned()
-}
-
-async fn compute_filename_from_location_header(
-    url: &str,
-    client_no_redirect: &Client,
-) -> Result<Option<FileLink>, DlmError> {
-    let head_result = client_no_redirect.head(url).send().await?;
-    if head_result.status().is_redirection() {
-        // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Location
-        match location_value(head_result.headers()) {
-            None => Ok(None),
-            Some(location) => {
-                let fl = FileLink::new(location)?;
-                Ok(Some(fl))
-            }
-        }
-    } else {
-        Ok(None)
-    }
 }
 
 #[cfg(test)]
