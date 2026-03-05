@@ -10,9 +10,8 @@ mod utils;
 
 use crate::DlmError::EmptyInputFile;
 use crate::args::{Arguments, Input, get_args};
-use crate::client::make_client;
 use crate::dlm_error::DlmError;
-use crate::downloader::download_link;
+use crate::downloader::{ClientConfig, DownloadContext, download_link};
 use crate::progress_bar_manager::ProgressBarManager;
 use crate::retry::{retry_handler, retry_strategy};
 use crate::user_agents::{UserAgent, random_user_agent};
@@ -72,26 +71,8 @@ async fn main_result() -> Result<(), DlmError> {
         }
     });
 
-    // setup HTTP clients
-    let client = make_client(
-        user_agent.as_ref(),
-        proxy.as_deref(),
-        true,
-        connection_timeout_secs,
-        accept_invalid_certs,
-    )?;
-    let client_no_redirect = make_client(
-        user_agent.as_ref(),
-        proxy.as_deref(),
-        false,
-        connection_timeout_secs,
-        accept_invalid_certs,
-    )?;
-    let client = &client;
-    let client_no_redirect = &client_no_redirect;
-    let accept = &accept;
     // trim trailing slash if any
-    let od_ref = &output_dir
+    let output_dir = output_dir
         .strip_suffix('/')
         .unwrap_or(&output_dir)
         .to_string();
@@ -131,12 +112,20 @@ async fn main_result() -> Result<(), DlmError> {
         }
     };
 
-    let token_ref = &token;
+    let token = &token;
+    let client_config = ClientConfig {
+        user_agent: user_agent.as_ref(),
+        proxy: proxy.as_deref(),
+        connection_timeout_secs,
+        accept_invalid_certs,
+    };
+    let ctx = DownloadContext::new(&client_config, &output_dir, token, pbm, accept.as_deref())?;
+    let ctx = &ctx;
     stream
-        .take_until(token_ref.cancelled()) // stop stream on signal
+        .take_until(token.cancelled()) // stop stream on signal
         .for_each_concurrent(max_concurrent_downloads as usize, |link_res| async move {
             // do not start new downloads if the program is stopped
-            if token_ref.is_cancelled() {
+            if token.is_cancelled() {
                 return;
             }
             let message = match link_res {
@@ -153,19 +142,7 @@ async fn main_result() -> Result<(), DlmError> {
 
                         let processed = RetryIf::spawn(
                             retry_strategy,
-                            || {
-                                download_link(
-                                    &link,
-                                    client,
-                                    client_no_redirect,
-                                    connection_timeout_secs,
-                                    od_ref,
-                                    token_ref,
-                                    &dl_pb,
-                                    pbm,
-                                    accept.as_deref(),
-                                )
-                            },
+                            || download_link(&link, ctx, &dl_pb),
                             |e: &DlmError| retry_handler(e, pbm, &link),
                         )
                         .await;

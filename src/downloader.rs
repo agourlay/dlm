@@ -10,42 +10,81 @@ use tokio::{fs as tfs, select};
 use tokio_util::sync::CancellationToken;
 
 use crate::ProgressBarManager;
+use crate::client::make_client;
 use crate::dlm_error::DlmError;
 use crate::file_link::FileLink;
+use crate::user_agents::UserAgent;
 use crate::utils::pretty_bytes_size;
 
 const NO_EXTENSION: &str = "NO_EXTENSION_FOUND";
 
-// TODO consider using a dedicated struct for the download link function
-#[allow(clippy::too_many_arguments)]
-pub async fn download_link(
-    raw_link: &str,
-    client: &Client,
-    client_no_redirect: &Client,
+pub struct ClientConfig<'a> {
+    pub user_agent: Option<&'a UserAgent>,
+    pub proxy: Option<&'a str>,
+    pub connection_timeout_secs: u32,
+    pub accept_invalid_certs: bool,
+}
+
+pub struct DownloadContext<'a> {
+    client: Client,
+    client_no_redirect: Client,
     connection_timeout_secs: u32,
-    output_dir: &str,
-    token: &CancellationToken,
-    pb_dl: &ProgressBar,
-    pb_manager: &ProgressBarManager,
-    accept_header: Option<&str>,
-) -> Result<String, DlmError> {
-    // select between stop signal and download
-    select! {
-        () = token.cancelled() => Err(DlmError::ProgramInterrupted),
-        dl = download(raw_link, client, client_no_redirect, connection_timeout_secs, output_dir, pb_dl, pb_manager, accept_header) =>dl,
+    output_dir: &'a str,
+    token: &'a CancellationToken,
+    pb_manager: &'a ProgressBarManager,
+    accept_header: Option<&'a str>,
+}
+
+impl<'a> DownloadContext<'a> {
+    pub fn new(
+        client_config: &ClientConfig<'_>,
+        output_dir: &'a str,
+        token: &'a CancellationToken,
+        pb_manager: &'a ProgressBarManager,
+        accept_header: Option<&'a str>,
+    ) -> Result<Self, DlmError> {
+        let client = make_client(
+            client_config.user_agent,
+            client_config.proxy,
+            true,
+            client_config.connection_timeout_secs,
+            client_config.accept_invalid_certs,
+        )?;
+        let client_no_redirect = make_client(
+            client_config.user_agent,
+            client_config.proxy,
+            false,
+            client_config.connection_timeout_secs,
+            client_config.accept_invalid_certs,
+        )?;
+        Ok(Self {
+            client,
+            client_no_redirect,
+            connection_timeout_secs: client_config.connection_timeout_secs,
+            output_dir,
+            token,
+            pb_manager,
+            accept_header,
+        })
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn download(
+pub async fn download_link(
     raw_link: &str,
-    client: &Client,
-    client_no_redirect: &Client,
-    connection_timeout_secs: u32,
-    output_dir: &str,
+    ctx: &DownloadContext<'_>,
     pb_dl: &ProgressBar,
-    pb_manager: &ProgressBarManager,
-    accept_header: Option<&str>,
+) -> Result<String, DlmError> {
+    // select between stop signal and download
+    select! {
+        () = ctx.token.cancelled() => Err(DlmError::ProgramInterrupted),
+        dl = download(raw_link, ctx, pb_dl) => dl,
+    }
+}
+
+async fn download(
+    raw_link: &str,
+    ctx: &DownloadContext<'_>,
+    pb_dl: &ProgressBar,
 ) -> Result<String, DlmError> {
     let file_link = FileLink::new(raw_link)?;
     let (extension, filename_without_extension) = match file_link.extension {
@@ -54,15 +93,15 @@ pub async fn download(
             fetch_filename_extension(
                 &file_link.url,
                 &file_link.filename_without_extension,
-                client,
-                client_no_redirect,
-                pb_manager,
+                &ctx.client,
+                &ctx.client_no_redirect,
+                ctx.pb_manager,
             )
             .await?
         }
     };
     let filename_with_extension = format!("{filename_without_extension}.{extension}");
-    let final_file_path = &format!("{output_dir}/{filename_with_extension}");
+    let final_file_path = &format!("{}/{filename_with_extension}", ctx.output_dir);
 
     // skip completed download
     if Path::new(final_file_path).exists() {
@@ -76,8 +115,8 @@ pub async fn download(
     }
 
     let url = file_link.url.as_str();
-    let mut head_request = client.head(url);
-    if let Some(accept) = accept_header {
+    let mut head_request = ctx.client.head(url);
+    if let Some(accept) = ctx.accept_header {
         head_request = head_request.header(ACCEPT, accept);
     }
 
@@ -89,7 +128,7 @@ pub async fn download(
     }
 
     let (content_length, accept_ranges) =
-        try_hard_to_extract_headers(head_result.headers(), url, client).await?;
+        try_hard_to_extract_headers(head_result.headers(), url, &ctx.client).await?;
     drop(head_result);
 
     // setup progress bar for the file
@@ -100,9 +139,15 @@ pub async fn download(
         pb_dl.set_length(total_size);
     }
 
-    let tmp_name = format!("{output_dir}/{filename_with_extension}.part");
-    let query_range =
-        compute_query_range(pb_dl, pb_manager, content_length, accept_ranges, &tmp_name).await?;
+    let tmp_name = format!("{}/{filename_with_extension}.part", ctx.output_dir);
+    let query_range = compute_query_range(
+        pb_dl,
+        ctx.pb_manager,
+        content_length,
+        accept_ranges,
+        &tmp_name,
+    )
+    .await?;
 
     // create/open file.part
     // no need for a BufWriter because the HTTP chunks are rather large
@@ -118,12 +163,12 @@ pub async fn download(
     };
 
     // building the request
-    let mut request = client.get(url);
+    let mut request = ctx.client.get(url);
     if let Some(range) = query_range {
         request = request.header(RANGE, range);
     }
 
-    if let Some(accept) = accept_header {
+    if let Some(accept) = ctx.accept_header {
         request = request.header(ACCEPT, accept);
     }
 
@@ -135,7 +180,7 @@ pub async fn download(
     }
 
     // incremental save chunk by chunk into part file
-    let chunk_timeout = Duration::from_secs(u64::from(connection_timeout_secs));
+    let chunk_timeout = Duration::from_secs(u64::from(ctx.connection_timeout_secs));
     while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
         file.write_all(&chunk).await?;
         pb_dl.inc(chunk.len() as u64);
