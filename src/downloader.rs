@@ -87,13 +87,33 @@ async fn download(
     pb_dl: &ProgressBar,
 ) -> Result<String, DlmError> {
     let file_link = FileLink::new(raw_link)?;
+    let url = file_link.url.as_str();
+
+    // single HEAD request to check existence and extract all needed headers
+    let mut head_request = ctx.client.head(url);
+    if let Some(accept) = ctx.accept_header {
+        head_request = head_request.header(ACCEPT, accept);
+    }
+    let head_result = head_request.send().await?;
+    if !head_result.status().is_success() {
+        let status_code = format!("{}", head_result.status());
+        return Err(DlmError::ResponseStatusNotSuccess { status_code });
+    }
+
+    let (content_length, accept_ranges) =
+        try_hard_to_extract_headers(head_result.headers(), url, &ctx.client).await?;
+    let disposition_filename =
+        content_disposition_value(head_result.headers()).and_then(parse_filename_header);
+    drop(head_result);
+
+    // resolve filename and extension
     let (extension, filename_without_extension) = match file_link.extension {
         Some(ext) => (ext, file_link.filename_without_extension),
         None => {
-            fetch_filename_extension(
-                &file_link.url,
+            resolve_filename_extension(
+                url,
                 &file_link.filename_without_extension,
-                &ctx.client,
+                disposition_filename,
                 &ctx.client_no_redirect,
                 ctx.pb_manager,
             )
@@ -113,23 +133,6 @@ async fn download(
         );
         return Ok(msg);
     }
-
-    let url = file_link.url.as_str();
-    let mut head_request = ctx.client.head(url);
-    if let Some(accept) = ctx.accept_header {
-        head_request = head_request.header(ACCEPT, accept);
-    }
-
-    // check existence with HEAD
-    let head_result = head_request.send().await?;
-    if !head_result.status().is_success() {
-        let status_code = format!("{}", head_result.status());
-        return Err(DlmError::ResponseStatusNotSuccess { status_code });
-    }
-
-    let (content_length, accept_ranges) =
-        try_hard_to_extract_headers(head_result.headers(), url, &ctx.client).await?;
-    drop(head_result);
 
     // setup progress bar for the file
     pb_dl.set_message(ProgressBarManager::message_progress_bar(
@@ -304,63 +307,44 @@ async fn compute_query_range(
     }
 }
 
-// necessary when the URL does not contain clearly the filename (in case of a redirect for instance)
-async fn fetch_filename_extension(
+// Resolve filename when the URL does not contain the extension (e.g. redirect)
+// Uses the Content-Disposition filename already extracted from the HEAD response
+async fn resolve_filename_extension(
     url: &str,
     filename_without_extension: &str,
-    client: &Client,
+    disposition_filename: Option<String>,
     client_no_redirect: &Client,
     pb_manager: &ProgressBarManager,
 ) -> Result<(String, String), DlmError> {
-    // try to get the file name from the HTTP headers
-    match compute_filename_from_disposition_header(url, client).await? {
-        Some(fh) => {
-            let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
-            if let Some(e) = ext {
-                Ok((e, filename))
-            } else {
-                let msg = format!(
-                    "Could not determine file extension based on header {filename} for {url}"
-                );
-                pb_manager.log_above_progress_bars(&msg);
-                Ok((
-                    NO_EXTENSION.to_owned(),
-                    filename_without_extension.to_string(),
-                ))
-            }
+    // try to get the file name from the Content-Disposition header
+    if let Some(fh) = disposition_filename {
+        let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
+        if let Some(e) = ext {
+            return Ok((e, filename));
         }
-        None => {
-            // check if it is maybe a redirect
-            match compute_filename_from_location_header(url, client_no_redirect).await? {
-                None => {
-                    let msg = format!("No extension found for {url}");
-                    pb_manager.log_above_progress_bars(&msg);
-                    Ok((
-                        NO_EXTENSION.to_owned(),
-                        filename_without_extension.to_string(),
-                    ))
-                }
-                Some(fl) => match fl.extension {
-                    Some(ext) => Ok((ext, fl.filename_without_extension)),
-                    None => Ok((NO_EXTENSION.to_owned(), fl.filename_without_extension)),
-                },
-            }
-        }
+        let msg =
+            format!("Could not determine file extension based on header {filename} for {url}");
+        pb_manager.log_above_progress_bars(&msg);
+        return Ok((
+            NO_EXTENSION.to_owned(),
+            filename_without_extension.to_string(),
+        ));
     }
-}
 
-async fn compute_filename_from_disposition_header(
-    url: &str,
-    client: &Client,
-) -> Result<Option<String>, DlmError> {
-    let head_result = client.head(url).send().await?;
-    if head_result.status().is_success() {
-        // https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition#as_a_response_header_for_the_main_body
-        let content_disposition = content_disposition_value(head_result.headers());
-        Ok(content_disposition.and_then(parse_filename_header))
-    } else {
-        let status_code = format!("{}", head_result.status());
-        Err(DlmError::ResponseStatusNotSuccess { status_code })
+    // check if it is maybe a redirect
+    match compute_filename_from_location_header(url, client_no_redirect).await? {
+        None => {
+            let msg = format!("No extension found for {url}");
+            pb_manager.log_above_progress_bars(&msg);
+            Ok((
+                NO_EXTENSION.to_owned(),
+                filename_without_extension.to_string(),
+            ))
+        }
+        Some(fl) => match fl.extension {
+            Some(ext) => Ok((ext, fl.filename_without_extension)),
+            None => Ok((NO_EXTENSION.to_owned(), fl.filename_without_extension)),
+        },
     }
 }
 
