@@ -3,7 +3,7 @@ use reqwest::Client;
 use reqwest::header::{
     ACCEPT, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, HeaderMap, LOCATION, RANGE,
 };
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{Duration, timeout};
 use tokio::{fs as tfs, select};
@@ -88,6 +88,7 @@ async fn download(
 ) -> Result<String, DlmError> {
     let file_link = FileLink::new(raw_link)?;
     let url = file_link.url.as_str();
+    let output_dir = Path::new(ctx.output_dir);
 
     // single HEAD request to check existence and extract all needed headers
     let mut head_request = ctx.client.head(url);
@@ -121,7 +122,7 @@ async fn download(
         }
     };
     let filename_with_extension = format!("{filename_without_extension}.{extension}");
-    let final_file_path = PathBuf::from(ctx.output_dir).join(&filename_with_extension);
+    let final_file_path = output_dir.join(&filename_with_extension);
 
     // skip completed download
     if final_file_path.exists() {
@@ -142,7 +143,7 @@ async fn download(
         pb_dl.set_length(total_size);
     }
 
-    let tmp_name = Path::new(ctx.output_dir).join(format!("{filename_with_extension}.part"));
+    let tmp_name = output_dir.join(format!("{filename_with_extension}.part"));
     let query_range = compute_query_range(
         pb_dl,
         ctx.pb_manager,
