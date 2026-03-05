@@ -3,7 +3,7 @@ use reqwest::Client;
 use reqwest::header::{
     ACCEPT, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, HeaderMap, LOCATION, RANGE,
 };
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 use tokio::time::{Duration, timeout};
 use tokio::{fs as tfs, select};
@@ -101,11 +101,11 @@ async fn download(
         }
     };
     let filename_with_extension = format!("{filename_without_extension}.{extension}");
-    let final_file_path = &format!("{}/{filename_with_extension}", ctx.output_dir);
+    let final_file_path = PathBuf::from(ctx.output_dir).join(&filename_with_extension);
 
     // skip completed download
-    if Path::new(final_file_path).exists() {
-        let final_file_size = tfs::metadata(final_file_path).await?.len();
+    if final_file_path.exists() {
+        let final_file_size = tfs::metadata(&final_file_path).await?.len();
         let msg = format!(
             "Skipping {} because the file is already completed [{}]",
             filename_with_extension,
@@ -139,7 +139,7 @@ async fn download(
         pb_dl.set_length(total_size);
     }
 
-    let tmp_name = format!("{}/{filename_with_extension}.part", ctx.output_dir);
+    let tmp_name = Path::new(ctx.output_dir).join(format!("{filename_with_extension}.part"));
     let query_range = compute_query_range(
         pb_dl,
         ctx.pb_manager,
@@ -200,8 +200,10 @@ async fn download(
 
     // check if the destination already has a finished file
     if tfs::metadata(&final_file_path).await.is_ok() {
-        let message =
-            format!("Can't finalize download because the file {final_file_path} already exists");
+        let message = format!(
+            "Can't finalize download because the file {} already exists",
+            final_file_path.display()
+        );
         return Err(DlmError::other(message));
     }
 
@@ -266,11 +268,11 @@ async fn compute_query_range(
     pb_manager: &ProgressBarManager,
     content_length: Option<u64>,
     accept_ranges: Option<String>,
-    tmp_name: &str,
+    tmp_name: &Path,
 ) -> Result<Option<String>, DlmError> {
-    if Path::new(&tmp_name).exists() {
+    if tmp_name.exists() {
         // get existing file size
-        let tmp_size = tfs::metadata(&tmp_name).await?.len();
+        let tmp_size = tfs::metadata(tmp_name).await?.len();
         match (accept_ranges, content_length) {
             (Some(range), Some(cl)) if range == "bytes" => {
                 // set the progress bar to the current size
@@ -282,7 +284,8 @@ async fn compute_query_range(
             }
             _ => {
                 let log = format!(
-                    "Found part file {tmp_name} with size {tmp_size} but it will be overridden because the server does not support resuming the download (range bytes)"
+                    "Found part file {} with size {tmp_size} but it will be overridden because the server does not support resuming the download (range bytes)",
+                    tmp_name.display()
                 );
                 pb_manager.log_above_progress_bars(&log);
                 pb_dl.set_position(0);
@@ -291,7 +294,8 @@ async fn compute_query_range(
         }
     } else if accept_ranges.is_none() {
         let log = format!(
-            "The download of file {tmp_name} should not be interrupted because the server does not support resuming the download (range bytes)"
+            "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
+            tmp_name.display()
         );
         pb_manager.log_above_progress_bars(&log);
         Ok(None)
