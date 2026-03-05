@@ -1,4 +1,4 @@
-use crate::{UserAgent, random_user_agent};
+use crate::user_agents::{UserAgent, random_user_agent};
 use reqwest::redirect::Policy;
 use reqwest::{Client, Proxy};
 use std::time::Duration;
@@ -18,7 +18,7 @@ pub fn make_client(
     let client_builder = match user_agent {
         Some(UserAgent::CustomUserAgent(ua)) => client_builder.user_agent(ua),
         Some(UserAgent::RandomUserAgent) => client_builder.user_agent(random_user_agent()),
-        _ => client_builder,
+        None => client_builder,
     };
 
     // setup proxy

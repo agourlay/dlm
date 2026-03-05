@@ -14,7 +14,6 @@ use crate::dlm_error::DlmError;
 use crate::downloader::{ClientConfig, DownloadContext, download_link};
 use crate::progress_bar_manager::ProgressBarManager;
 use crate::retry::{retry_handler, retry_strategy};
-use crate::user_agents::{UserAgent, random_user_agent};
 use futures_util::stream::StreamExt;
 use std::pin::Pin;
 use tokio::io::AsyncBufReadExt;
