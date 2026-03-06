@@ -56,18 +56,17 @@ async fn main_result() -> Result<(), DlmError> {
     let token = CancellationToken::new();
     let token_signal = token.clone();
     let signal_task_handler = tokio::spawn(async move {
-        let mut counter = 0;
-        // catch chain of interrupt signals
-        loop {
-            signal::ctrl_c()
-                .await
-                .expect("ctrl-c signal should not fail");
-            token_signal.cancel();
-            counter += 1;
-            if counter > 1 {
-                eprintln!("Received multiple interrupt signals - something is stuck");
-            }
-        }
+        // first interrupt: graceful shutdown
+        signal::ctrl_c()
+            .await
+            .expect("ctrl-c signal should not fail");
+        token_signal.cancel();
+        // second interrupt: force exit
+        signal::ctrl_c()
+            .await
+            .expect("ctrl-c signal should not fail");
+        eprintln!("Received second interrupt signal - force exiting");
+        std::process::exit(1);
     });
 
     let nb_of_lines = match &input {
