@@ -34,10 +34,6 @@ pub enum DlmError {
     Other { message: String },
 }
 
-const CONNECTION_CLOSED: &str = "connection closed before message completed";
-const CONNECTION_TIMEOUT: &str = "error trying to connect: operation timed out";
-const BODY_ERROR: &str = "error reading a body from connection";
-
 impl DlmError {
     pub fn other(message: String) -> Self {
         Self::Other { message }
@@ -46,16 +42,14 @@ impl DlmError {
 
 impl From<reqwest::Error> for DlmError {
     fn from(e: reqwest::Error) -> Self {
-        //TODO use Reqwest's types instead of guessing from strings https://github.com/seanmonstar/reqwest/issues/757
-        let e_string = e.to_string();
-        if e_string.contains(BODY_ERROR) {
-            Self::ResponseBodyError
-        } else if e_string.contains(CONNECTION_CLOSED) {
-            Self::ConnectionClosed
-        } else if e_string.contains(CONNECTION_TIMEOUT) {
+        if e.is_timeout() {
             Self::ConnectionTimeout
+        } else if e.is_connect() {
+            Self::ConnectionClosed
+        } else if e.is_body() {
+            Self::ResponseBodyError
         } else {
-            Self::Other { message: e_string }
+            Self::other(e.to_string())
         }
     }
 }
