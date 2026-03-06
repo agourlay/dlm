@@ -12,7 +12,7 @@ pub fn retry_strategy(max_attempts: u32) -> impl Iterator<Item = Duration> {
 }
 
 pub fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool {
-    let should_retry = is_network_error(e);
+    let should_retry = is_retryable_error(e);
     if should_retry {
         let msg = format!("Scheduling retry for {link} after error {e}");
         pbm.log_above_progress_bars(&msg);
@@ -20,13 +20,16 @@ pub fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool
     should_retry
 }
 
-const fn is_network_error(e: &DlmError) -> bool {
+const fn is_retryable_error(e: &DlmError) -> bool {
     matches!(
         e,
         DlmError::ConnectionClosed
             | DlmError::ConnectionTimeout
             | DlmError::ResponseBodyError
             | DlmError::DeadLineElapsedTimeout
+            | DlmError::ResponseStatusNotSuccess {
+                status_code: 429 | 500..=599
+            }
     )
 }
 

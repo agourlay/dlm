@@ -92,7 +92,7 @@ impl<'a> DownloadContext<'a> {
         }
         let head_result = head_request.send().await?;
         if !head_result.status().is_success() {
-            let status_code = format!("{}", head_result.status());
+            let status_code = head_result.status().as_u16();
             return Err(DlmError::ResponseStatusNotSuccess { status_code });
         }
 
@@ -172,7 +172,7 @@ impl<'a> DownloadContext<'a> {
         // initiate file download
         let mut dl_response = request.send().await?;
         if !dl_response.status().is_success() {
-            let status_code = format!("{}", dl_response.status());
+            let status_code = dl_response.status().as_u16();
             return Err(DlmError::ResponseStatusNotSuccess { status_code });
         }
 
