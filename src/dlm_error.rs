@@ -6,8 +6,8 @@ use tokio::time::error::Elapsed;
 pub enum DlmError {
     #[error("the input file is empty")]
     EmptyInputFile,
-    #[error("connection closed")]
-    ConnectionClosed,
+    #[error("connection error")]
+    ConnectError,
     #[error("connection timeout")]
     ConnectionTimeout,
     #[error("response body error")]
@@ -16,7 +16,7 @@ pub enum DlmError {
     DeadLineElapsedTimeout,
     #[error("response status not success - {status_code}")]
     ResponseStatusNotSuccess { status_code: u16 },
-    #[error("URL decode error - {message:?}")]
+    #[error("URL decode error - {message}")]
     UrlDecodeError { message: String },
     #[error("standard I/O error - {e}")]
     StdIoError { e: std::io::Error },
@@ -24,13 +24,13 @@ pub enum DlmError {
     TaskError { e: JoinError },
     #[error("channel error - {e}")]
     ChannelError { e: async_channel::RecvError },
-    #[error("CLI argument error - {message:?}")]
+    #[error("CLI argument error - {message}")]
     CliArgumentError { message: String },
     #[error("CLI argument error ({e})")]
     ClapError { e: clap::Error },
     #[error("Program interrupted")]
     ProgramInterrupted,
-    #[error("other error - {message:?}")]
+    #[error("other error - {message}")]
     Other { message: String },
 }
 
@@ -45,7 +45,7 @@ impl From<reqwest::Error> for DlmError {
         if e.is_timeout() {
             Self::ConnectionTimeout
         } else if e.is_connect() {
-            Self::ConnectionClosed
+            Self::ConnectError
         } else if e.is_body() {
             Self::ResponseBodyError
         } else {

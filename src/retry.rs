@@ -23,7 +23,7 @@ pub fn retry_handler(e: &DlmError, pbm: &ProgressBarManager, link: &str) -> bool
 const fn is_retryable_error(e: &DlmError) -> bool {
     matches!(
         e,
-        DlmError::ConnectionClosed
+        DlmError::ConnectError
             | DlmError::ConnectionTimeout
             | DlmError::ResponseBodyError
             | DlmError::DeadLineElapsedTimeout

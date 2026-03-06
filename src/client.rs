@@ -1,3 +1,4 @@
+use crate::dlm_error::DlmError;
 use crate::user_agents::{UserAgent, random_user_agent};
 use reqwest::redirect::Policy;
 use reqwest::{Client, Proxy};
@@ -9,7 +10,7 @@ pub fn make_client(
     redirect: bool,
     connection_timeout_sec: u32,
     accept_invalid_certs: bool,
-) -> reqwest::Result<Client> {
+) -> Result<Client, DlmError> {
     let client_builder = Client::builder()
         .connect_timeout(Duration::from_secs(u64::from(connection_timeout_sec)))
         .danger_accept_invalid_certs(accept_invalid_certs);
@@ -35,5 +36,5 @@ pub fn make_client(
         client_builder.redirect(Policy::none())
     };
 
-    client_builder.build()
+    Ok(client_builder.build()?)
 }
