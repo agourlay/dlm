@@ -285,11 +285,17 @@ async fn try_hard_to_extract_headers(
             // if "content-length": "0" then it is likely the server does not support HEAD, let's try harder with a GET
             // Use Range: bytes=0-0 to minimize data transfer if supported
             let get_result = client.get(url).header(RANGE, "bytes=0-0").send().await?;
-            // Extract headers before dropping the response to avoid buffering the body
-            let cl = content_length_value(get_result.headers());
-            let ar = supports_range_bytes(get_result.headers());
-            drop(get_result);
-            (cl, ar)
+            if !get_result.status().is_success() {
+                // GET fallback also failed, give up on header extraction
+                drop(get_result);
+                (None, false)
+            } else {
+                // Extract headers before dropping the response to avoid buffering the body
+                let cl = content_length_value(get_result.headers());
+                let ar = supports_range_bytes(get_result.headers());
+                drop(get_result);
+                (cl, ar)
+            }
         }
         ct_option @ Some(_) => (ct_option, supports_range_bytes(head_headers)),
         _ => (None, false),
