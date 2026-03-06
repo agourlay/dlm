@@ -111,7 +111,13 @@ async fn main_result() -> Result<(), DlmError> {
         connection_timeout_secs,
         accept_invalid_certs,
     };
-    let ctx = DownloadContext::new(&client_config, &output_dir, token, pbm, accept.as_deref())?;
+    let ctx = DownloadContext::new(
+        &client_config,
+        output_dir.as_path(),
+        token,
+        pbm,
+        accept.as_deref(),
+    )?;
     let ctx = &ctx;
     stream
         .take_until(token.cancelled()) // stop stream on signal

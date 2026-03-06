@@ -4,7 +4,7 @@ use crate::user_agents::UserAgent;
 use crate::user_agents::UserAgent::{CustomUserAgent, RandomUserAgent};
 use clap::{Arg, Command};
 use clap::{crate_authors, crate_description, crate_name, crate_version};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn command() -> Command {
     Command::new(crate_name!())
@@ -110,7 +110,7 @@ pub enum Input {
 pub struct Arguments {
     pub input: Input,
     pub max_concurrent_downloads: u32,
-    pub output_dir: String,
+    pub output_dir: PathBuf,
     pub user_agent: Option<UserAgent>,
     pub proxy: Option<String>,
     pub retry: u32,
@@ -155,12 +155,13 @@ pub fn get_args() -> Result<Arguments, DlmError> {
     };
     let input = input?;
 
-    let output_dir = matches
-        .get_one::<String>("outputDir")
-        .expect("impossible")
-        .trim()
-        .to_string();
-    if !Path::new(&output_dir).is_dir() {
+    let output_dir = PathBuf::from(
+        matches
+            .get_one::<String>("outputDir")
+            .expect("impossible")
+            .trim(),
+    );
+    if !output_dir.is_dir() {
         return Err(CliArgumentError {
             message: "'outputDir' does not exist".to_string(),
         });

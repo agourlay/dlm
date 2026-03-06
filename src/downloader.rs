@@ -29,7 +29,7 @@ pub struct DownloadContext<'a> {
     client: Client,
     client_no_redirect: Client,
     connection_timeout_secs: u32,
-    output_dir: &'a str,
+    output_dir: &'a Path,
     token: &'a CancellationToken,
     pb_manager: &'a ProgressBarManager,
     accept_header: Option<&'a str>,
@@ -38,7 +38,7 @@ pub struct DownloadContext<'a> {
 impl<'a> DownloadContext<'a> {
     pub fn new(
         client_config: &ClientConfig<'_>,
-        output_dir: &'a str,
+        output_dir: &'a Path,
         token: &'a CancellationToken,
         pb_manager: &'a ProgressBarManager,
         accept_header: Option<&'a str>,
@@ -83,7 +83,7 @@ impl<'a> DownloadContext<'a> {
     async fn download(&self, raw_link: &str, pb_dl: &ProgressBar) -> Result<String, DlmError> {
         let file_link = FileLink::new(raw_link)?;
         let url = file_link.url.as_str();
-        let output_dir = Path::new(self.output_dir);
+        let output_dir = self.output_dir;
 
         // single HEAD request to check existence and extract all needed headers
         let mut head_request = self.client.head(url);
