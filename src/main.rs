@@ -3,6 +3,7 @@ mod client;
 mod dlm_error;
 mod downloader;
 mod file_link;
+mod headers;
 mod progress_bar_manager;
 mod retry;
 mod user_agents;

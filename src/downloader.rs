@@ -1,8 +1,6 @@
 use indicatif::ProgressBar;
 use reqwest::Client;
-use reqwest::header::{
-    ACCEPT, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, HeaderMap, LOCATION, RANGE,
-};
+use reqwest::header::{ACCEPT, HeaderMap, RANGE};
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{Duration, timeout};
@@ -13,6 +11,10 @@ use crate::ProgressBarManager;
 use crate::client::make_client;
 use crate::dlm_error::DlmError;
 use crate::file_link::FileLink;
+use crate::headers::{
+    content_disposition_value, content_length_value, content_range_total_size, location_value,
+    supports_range_bytes,
+};
 use crate::user_agents::UserAgent;
 use crate::utils::pretty_bytes_size;
 
@@ -68,6 +70,58 @@ impl<'a> DownloadContext<'a> {
         })
     }
 
+    /// Extract download metadata (content-length, range support, disposition filename)
+    /// via HEAD request, falling back to GET if the server returns 405.
+    async fn extract_metadata(
+        &self,
+        url: &str,
+    ) -> Result<(Option<u64>, bool, Option<String>), DlmError> {
+        let mut head_request = self.client.head(url);
+        if let Some(accept) = self.accept_header {
+            head_request = head_request.header(ACCEPT, accept);
+        }
+        let head_result = head_request.send().await?;
+        let head_status = head_result.status();
+
+        if head_status == reqwest::StatusCode::METHOD_NOT_ALLOWED {
+            // Server does not support HEAD, fall back to GET with minimal range
+            self.pb_manager.log_above_progress_bars(&format!(
+                "HEAD returned 405 for {url}, falling back to GET for metadata"
+            ));
+            drop(head_result);
+            let get_result = self
+                .client
+                .get(url)
+                .header(RANGE, "bytes=0-0")
+                .send()
+                .await?;
+            if get_result.status().is_success() {
+                // Content-Length will be 1 (for the single byte requested),
+                // so extract the total size from Content-Range header instead
+                let cl = content_range_total_size(get_result.headers())
+                    .or_else(|| content_length_value(get_result.headers()));
+                let ar = supports_range_bytes(get_result.headers());
+                let df =
+                    content_disposition_value(get_result.headers()).and_then(parse_filename_header);
+                drop(get_result);
+                Ok((cl, ar, df))
+            } else {
+                let status_code = get_result.status().as_u16();
+                Err(DlmError::ResponseStatusNotSuccess { status_code })
+            }
+        } else if !head_status.is_success() {
+            let status_code = head_status.as_u16();
+            Err(DlmError::ResponseStatusNotSuccess { status_code })
+        } else {
+            let (content_length, supports_range) =
+                try_hard_to_extract_headers(head_result.headers(), url, &self.client).await?;
+            let disposition_filename =
+                content_disposition_value(head_result.headers()).and_then(parse_filename_header);
+            drop(head_result);
+            Ok((content_length, supports_range, disposition_filename))
+        }
+    }
+
     pub async fn download_link(
         &self,
         raw_link: &str,
@@ -81,26 +135,13 @@ impl<'a> DownloadContext<'a> {
     }
 
     async fn download(&self, raw_link: &str, pb_dl: &ProgressBar) -> Result<String, DlmError> {
+        // make link struct and extract URL
         let file_link = FileLink::new(raw_link)?;
         let url = file_link.url.as_str();
-        let output_dir = self.output_dir;
 
-        // single HEAD request to check existence and extract all needed headers
-        let mut head_request = self.client.head(url);
-        if let Some(accept) = self.accept_header {
-            head_request = head_request.header(ACCEPT, accept);
-        }
-        let head_result = head_request.send().await?;
-        if !head_result.status().is_success() {
-            let status_code = head_result.status().as_u16();
-            return Err(DlmError::ResponseStatusNotSuccess { status_code });
-        }
-
-        let (content_length, supports_range) =
-            try_hard_to_extract_headers(head_result.headers(), url, &self.client).await?;
-        let disposition_filename =
-            content_disposition_value(head_result.headers()).and_then(parse_filename_header);
-        drop(head_result);
+        // extract metadata with a HEAD request, falling back to GET if needed
+        let (content_length, supports_range, disposition_filename) =
+            self.extract_metadata(url).await?;
 
         // resolve filename and extension
         let (extension, filename_without_extension) = match file_link.extension {
@@ -115,6 +156,7 @@ impl<'a> DownloadContext<'a> {
             }
         };
         let filename_with_extension = format!("{filename_without_extension}.{extension}");
+        let output_dir = self.output_dir;
         let final_file_path = output_dir.join(&filename_with_extension);
 
         // skip completed download
@@ -291,7 +333,8 @@ async fn try_hard_to_extract_headers(
                 (None, false)
             } else {
                 // Extract headers before dropping the response to avoid buffering the body
-                let cl = content_length_value(get_result.headers());
+                let cl = content_range_total_size(get_result.headers())
+                    .or_else(|| content_length_value(get_result.headers()));
                 let ar = supports_range_bytes(get_result.headers());
                 drop(get_result);
                 (cl, ar)
@@ -301,30 +344,6 @@ async fn try_hard_to_extract_headers(
         _ => (None, false),
     };
     Ok(tuple)
-}
-
-fn content_length_value(headers: &HeaderMap) -> Option<u64> {
-    headers
-        .get(CONTENT_LENGTH)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse().ok())
-}
-
-fn supports_range_bytes(headers: &HeaderMap) -> bool {
-    headers
-        .get(ACCEPT_RANGES)
-        .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v == "bytes")
-}
-
-fn content_disposition_value(headers: &HeaderMap) -> Option<&str> {
-    headers
-        .get(CONTENT_DISPOSITION)
-        .and_then(|v| v.to_str().ok())
-}
-
-fn location_value(headers: &HeaderMap) -> Option<&str> {
-    headers.get(LOCATION).and_then(|v| v.to_str().ok())
 }
 
 async fn compute_query_range(
