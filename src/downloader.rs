@@ -86,7 +86,6 @@ impl<'a> DownloadContext<'a> {
             self.pb_manager.log_above_progress_bars(&format!(
                 "HEAD returned 405 for {url}, falling back to GET for metadata"
             ));
-            drop(head_result);
             let get_result = self
                 .client
                 .get(url)
@@ -101,7 +100,6 @@ impl<'a> DownloadContext<'a> {
                 let ar = supports_range_bytes(get_result.headers());
                 let df =
                     content_disposition_value(get_result.headers()).and_then(parse_filename_header);
-                drop(get_result);
                 Ok((cl, ar, df))
             } else {
                 let status_code = get_result.status().as_u16();
@@ -116,7 +114,6 @@ impl<'a> DownloadContext<'a> {
                 .await?;
             let disposition_filename =
                 content_disposition_value(head_result.headers()).and_then(parse_filename_header);
-            drop(head_result);
             Ok((content_length, supports_range, disposition_filename))
         }
     }
@@ -347,7 +344,6 @@ impl<'a> DownloadContext<'a> {
                     .await?;
                 if !get_result.status().is_success() {
                     let status = get_result.status();
-                    drop(get_result);
                     self.pb_manager.log_above_progress_bars(&format!(
                         "GET fallback for metadata returned {status} for {url}, proceeding without content-length"
                     ));
@@ -356,7 +352,6 @@ impl<'a> DownloadContext<'a> {
                     let cl = content_range_total_size(get_result.headers())
                         .or_else(|| content_length_value(get_result.headers()));
                     let ar = supports_range_bytes(get_result.headers());
-                    drop(get_result);
                     (cl, ar)
                 }
             }
