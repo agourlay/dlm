@@ -55,20 +55,7 @@ async fn main_result() -> Result<(), DlmError> {
 
     // setup interruption signal handler
     let token = CancellationToken::new();
-    let token_signal = token.clone();
-    let signal_task_handler = tokio::spawn(async move {
-        // first interrupt: graceful shutdown
-        signal::ctrl_c()
-            .await
-            .expect("ctrl-c signal should not fail");
-        token_signal.cancel();
-        // second interrupt: force exit
-        signal::ctrl_c()
-            .await
-            .expect("ctrl-c signal should not fail");
-        eprintln!("Received second interrupt signal - force exiting");
-        std::process::exit(1);
-    });
+    let signal_task_handler = spawn_signal_handler(token.clone());
 
     let nb_of_lines = match &input {
         Input::File(input_file) => count_non_empty_lines(input_file).await?,
@@ -82,28 +69,7 @@ async fn main_result() -> Result<(), DlmError> {
     let pbm = ProgressBarManager::init(max_concurrent_downloads, nb_of_lines).await;
     let pbm = &pbm;
 
-    let stream: LineStream = match input {
-        Input::File(input_file) => {
-            // print startup info
-            pbm.log_above_progress_bars(&format!(
-                "Starting dlm with at most {max_concurrent_downloads} concurrent downloads"
-            ));
-            pbm.log_above_progress_bars(&format!(
-                "Found {nb_of_lines} URLs in input file {input_file}"
-            ));
-
-            // start streaming lines from file
-            let file = tfs::File::open(input_file).await?;
-            let file_reader = tokio::io::BufReader::new(file);
-            Box::pin(LinesStream::new(file_reader.lines()))
-        }
-        Input::Url(url) => {
-            // print startup info
-            pbm.log_above_progress_bars(&format!("Downloading single URL: {url}"));
-            // fake single element stream
-            Box::pin(tokio_stream::once(Ok(url)))
-        }
-    };
+    let stream = build_url_stream(input, pbm, max_concurrent_downloads, nb_of_lines).await?;
 
     let token = &token;
     let client_config = ClientConfig {
@@ -120,10 +86,71 @@ async fn main_result() -> Result<(), DlmError> {
         accept.as_deref(),
     )?;
     let ctx = &ctx;
+
+    process_downloads(stream, ctx, token, pbm, retry, max_concurrent_downloads).await;
+
+    // stop signal handling
+    signal_task_handler.abort();
+    if token.is_cancelled() {
+        Err(DlmError::ProgramInterrupted)
+    } else {
+        pbm.finish_all().await?;
+        Ok(())
+    }
+}
+
+fn spawn_signal_handler(token: CancellationToken) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        // first interrupt: graceful shutdown
+        signal::ctrl_c()
+            .await
+            .expect("ctrl-c signal should not fail");
+        token.cancel();
+        // second interrupt: force exit
+        signal::ctrl_c()
+            .await
+            .expect("ctrl-c signal should not fail");
+        eprintln!("Received second interrupt signal - force exiting");
+        std::process::exit(1);
+    })
+}
+
+async fn build_url_stream(
+    input: Input,
+    pbm: &ProgressBarManager,
+    max_concurrent_downloads: u32,
+    nb_of_lines: u64,
+) -> Result<LineStream, DlmError> {
+    match input {
+        Input::File(input_file) => {
+            pbm.log_above_progress_bars(&format!(
+                "Starting dlm with at most {max_concurrent_downloads} concurrent downloads"
+            ));
+            pbm.log_above_progress_bars(&format!(
+                "Found {nb_of_lines} URLs in input file {input_file}"
+            ));
+            let file = tfs::File::open(input_file).await?;
+            let file_reader = tokio::io::BufReader::new(file);
+            Ok(Box::pin(LinesStream::new(file_reader.lines())))
+        }
+        Input::Url(url) => {
+            pbm.log_above_progress_bars(&format!("Downloading single URL: {url}"));
+            Ok(Box::pin(tokio_stream::once(Ok(url))))
+        }
+    }
+}
+
+async fn process_downloads(
+    stream: LineStream,
+    ctx: &DownloadContext<'_>,
+    token: &CancellationToken,
+    pbm: &ProgressBarManager,
+    retry: u32,
+    max_concurrent_downloads: u32,
+) {
     stream
-        .take_until(token.cancelled()) // stop stream on signal
+        .take_until(token.cancelled())
         .for_each_concurrent(max_concurrent_downloads as usize, |link_res| async move {
-            // do not start new downloads if the program is stopped
             if token.is_cancelled() {
                 return;
             }
@@ -149,10 +176,9 @@ async fn main_result() -> Result<(), DlmError> {
                         // reset & release progress bar
                         pbm.release_progress_bar(dl_pb).await;
 
-                        // extract result
                         match processed {
                             Ok(info) => Some(info),
-                            Err(DlmError::ProgramInterrupted) => None, // no logs on interrupt
+                            Err(DlmError::ProgramInterrupted) => None,
                             Err(e) => Some(format!("Error for {link}: {e}")),
                         }
                     }
@@ -164,16 +190,6 @@ async fn main_result() -> Result<(), DlmError> {
             }
         })
         .await;
-
-    // stop signal handling
-    signal_task_handler.abort();
-    if token.is_cancelled() {
-        Err(DlmError::ProgramInterrupted)
-    } else {
-        // cleanup phase
-        pbm.finish_all().await?;
-        Ok(())
-    }
 }
 
 fn is_empty_line(line: &str) -> bool {

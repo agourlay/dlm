@@ -111,8 +111,9 @@ impl<'a> DownloadContext<'a> {
             let status_code = head_status.as_u16();
             Err(DlmError::ResponseStatusNotSuccess { status_code })
         } else {
-            let (content_length, supports_range) =
-                try_hard_to_extract_headers(head_result.headers(), url, &self.client).await?;
+            let (content_length, supports_range) = self
+                .try_hard_to_extract_headers(head_result.headers(), url)
+                .await?;
             let disposition_filename =
                 content_disposition_value(head_result.headers()).and_then(parse_filename_header);
             drop(head_result);
@@ -327,35 +328,43 @@ impl<'a> DownloadContext<'a> {
             Ok(None)
         }
     }
-}
 
-async fn try_hard_to_extract_headers(
-    head_headers: &HeaderMap,
-    url: &str,
-    client: &Client,
-) -> Result<(Option<u64>, bool), DlmError> {
-    let tuple = match content_length_value(head_headers) {
-        Some(0) => {
-            // if "content-length": "0" then it is likely the server does not support HEAD, let's try harder with a GET
-            // Use Range: bytes=0-0 to minimize data transfer if supported
-            let get_result = client.get(url).header(RANGE, "bytes=0-0").send().await?;
-            if !get_result.status().is_success() {
-                // GET fallback also failed, give up on header extraction
-                drop(get_result);
-                (None, false)
-            } else {
-                // Extract headers before dropping the response to avoid buffering the body
-                let cl = content_range_total_size(get_result.headers())
-                    .or_else(|| content_length_value(get_result.headers()));
-                let ar = supports_range_bytes(get_result.headers());
-                drop(get_result);
-                (cl, ar)
+    /// Try harder to extract content-length and range support when HEAD returns content-length: 0.
+    async fn try_hard_to_extract_headers(
+        &self,
+        head_headers: &HeaderMap,
+        url: &str,
+    ) -> Result<(Option<u64>, bool), DlmError> {
+        let tuple = match content_length_value(head_headers) {
+            Some(0) => {
+                // if "content-length": "0" then it is likely the server does not support HEAD, let's try harder with a GET
+                // Use Range: bytes=0-0 to minimize data transfer if supported
+                let get_result = self
+                    .client
+                    .get(url)
+                    .header(RANGE, "bytes=0-0")
+                    .send()
+                    .await?;
+                if !get_result.status().is_success() {
+                    let status = get_result.status();
+                    drop(get_result);
+                    self.pb_manager.log_above_progress_bars(&format!(
+                        "GET fallback for metadata returned {status} for {url}, proceeding without content-length"
+                    ));
+                    (None, false)
+                } else {
+                    let cl = content_range_total_size(get_result.headers())
+                        .or_else(|| content_length_value(get_result.headers()));
+                    let ar = supports_range_bytes(get_result.headers());
+                    drop(get_result);
+                    (cl, ar)
+                }
             }
-        }
-        ct_option @ Some(_) => (ct_option, supports_range_bytes(head_headers)),
-        _ => (None, false),
-    };
-    Ok(tuple)
+            ct_option @ Some(_) => (ct_option, supports_range_bytes(head_headers)),
+            _ => (None, false),
+        };
+        Ok(tuple)
+    }
 }
 
 async fn compute_query_range(
