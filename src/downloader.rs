@@ -18,8 +18,6 @@ use crate::headers::{
 use crate::user_agents::UserAgent;
 use crate::utils::pretty_bytes_size;
 
-const NO_EXTENSION: &str = "NO_EXTENSION_FOUND";
-
 pub struct ClientConfig<'a> {
     pub user_agent: Option<&'a UserAgent>,
     pub proxy: Option<&'a str>,
@@ -145,7 +143,7 @@ impl<'a> DownloadContext<'a> {
 
         // resolve filename and extension
         let (extension, filename_without_extension) = match file_link.extension {
-            Some(ext) => (ext, file_link.filename_without_extension),
+            Some(ext) => (Some(ext), file_link.filename_without_extension),
             None => {
                 self.resolve_filename_extension(
                     url,
@@ -155,30 +153,31 @@ impl<'a> DownloadContext<'a> {
                 .await?
             }
         };
-        let filename_with_extension = format!("{filename_without_extension}.{extension}");
+        let filename = match &extension {
+            Some(ext) => format!("{filename_without_extension}.{ext}"),
+            None => filename_without_extension,
+        };
         let output_dir = self.output_dir;
-        let final_file_path = output_dir.join(&filename_with_extension);
+        let final_file_path = output_dir.join(&filename);
 
         // skip completed download
         if final_file_path.exists() {
             let final_file_size = tfs::metadata(&final_file_path).await?.len();
             let msg = format!(
                 "Skipping {} because the file is already completed [{}]",
-                filename_with_extension,
+                filename,
                 pretty_bytes_size(final_file_size)
             );
             return Ok(msg);
         }
 
         // setup progress bar for the file
-        pb_dl.set_message(ProgressBarManager::message_progress_bar(
-            &filename_with_extension,
-        ));
+        pb_dl.set_message(ProgressBarManager::message_progress_bar(&filename));
         if let Some(total_size) = content_length {
             pb_dl.set_length(total_size);
         }
 
-        let tmp_name = output_dir.join(format!("{filename_with_extension}.part"));
+        let tmp_name = output_dir.join(format!("{filename}.part"));
         let query_range = compute_query_range(
             pb_dl,
             self.pb_manager,
@@ -251,7 +250,7 @@ impl<'a> DownloadContext<'a> {
         tfs::rename(&tmp_name, final_file_path).await?;
         let msg = format!(
             "Completed {} [{}]",
-            filename_with_extension,
+            filename,
             pretty_bytes_size(final_file_size)
         );
         Ok(msg)
@@ -264,20 +263,17 @@ impl<'a> DownloadContext<'a> {
         url: &str,
         filename_without_extension: &str,
         disposition_filename: Option<String>,
-    ) -> Result<(String, String), DlmError> {
+    ) -> Result<(Option<String>, String), DlmError> {
         // try to get the file name from the Content-Disposition header
         if let Some(fh) = disposition_filename {
             let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
-            if let Some(e) = ext {
-                return Ok((e, filename));
+            if ext.is_some() {
+                return Ok((ext, filename));
             }
             let msg =
                 format!("Could not determine file extension based on header {filename} for {url}");
             self.pb_manager.log_above_progress_bars(&msg);
-            return Ok((
-                NO_EXTENSION.to_owned(),
-                filename_without_extension.to_string(),
-            ));
+            return Ok((None, filename_without_extension.to_string()));
         }
 
         // check if it is maybe a redirect
@@ -285,15 +281,9 @@ impl<'a> DownloadContext<'a> {
             None => {
                 let msg = format!("No extension found for {url}");
                 self.pb_manager.log_above_progress_bars(&msg);
-                Ok((
-                    NO_EXTENSION.to_owned(),
-                    filename_without_extension.to_string(),
-                ))
+                Ok((None, filename_without_extension.to_string()))
             }
-            Some(fl) => match fl.extension {
-                Some(ext) => Ok((ext, fl.filename_without_extension)),
-                None => Ok((NO_EXTENSION.to_owned(), fl.filename_without_extension)),
-            },
+            Some(fl) => Ok((fl.extension, fl.filename_without_extension)),
         }
     }
 
