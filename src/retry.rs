@@ -27,6 +27,7 @@ const fn is_retryable_error(e: &DlmError) -> bool {
             | DlmError::ConnectionTimeout
             | DlmError::ResponseBodyError
             | DlmError::DeadLineElapsedTimeout
+            | DlmError::IncompleteDownload { .. }
             | DlmError::ResponseStatusNotSuccess {
                 status_code: 429 | 500..=599
             }

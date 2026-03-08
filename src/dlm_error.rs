@@ -14,6 +14,8 @@ pub enum DlmError {
     ResponseBodyError,
     #[error("deadline elapsed timeout")]
     DeadLineElapsedTimeout,
+    #[error("incomplete download - expected {expected} bytes, got {actual}")]
+    IncompleteDownload { expected: u64, actual: u64 },
     #[error("response status not success - {status_code}")]
     ResponseStatusNotSuccess { status_code: u16 },
     #[error("URL decode error - {message}")]

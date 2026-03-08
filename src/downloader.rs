@@ -232,10 +232,10 @@ impl<'a> DownloadContext<'a> {
         if let Some(expected) = content_length
             && final_file_size != expected
         {
-            let message = format!(
-                "Incomplete download content_length:{expected} vs file_size:{final_file_size}"
-            );
-            return Err(DlmError::other(message));
+            return Err(DlmError::IncompleteDownload {
+                expected,
+                actual: final_file_size,
+            });
         }
 
         // check if the destination already has a finished file
