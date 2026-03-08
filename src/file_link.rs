@@ -37,6 +37,13 @@ impl FileLink {
         }
     }
 
+    pub fn filename(&self) -> String {
+        match &self.extension {
+            Some(ext) => format!("{}.{ext}", self.filename_without_extension),
+            None => self.filename_without_extension.clone(),
+        }
+    }
+
     pub fn extract_extension_from_filename(filename: &str) -> (Option<String>, String) {
         if let Some((before, after)) = filename.rsplit_once('.') {
             // remove potential query params from extension
@@ -144,6 +151,18 @@ mod file_link_tests {
             "search-q=id:A000001-fmt=json"
         );
         assert_eq!(fl.url, url);
+    }
+
+    #[test]
+    fn filename_with_extension() {
+        let fl = FileLink::new("https://example.com/area51.txt").unwrap();
+        assert_eq!(fl.filename(), "area51.txt");
+    }
+
+    #[test]
+    fn filename_without_extension() {
+        let fl = FileLink::new("https://example.com/area51").unwrap();
+        assert_eq!(fl.filename(), "area51");
     }
 
     #[test]

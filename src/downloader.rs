@@ -135,9 +135,25 @@ impl<'a> DownloadContext<'a> {
     }
 
     async fn download(&self, file_link: FileLink, pb_dl: &ProgressBar) -> Result<String, DlmError> {
-        let url = file_link.url.as_str();
+        let output_dir = self.output_dir;
+
+        // When the filename is fully known from the URL, skip the HEAD request if the file exists
+        if file_link.extension.is_some() {
+            let filename = file_link.filename();
+            let final_file_path = output_dir.join(&filename);
+            if final_file_path.exists() {
+                let final_file_size = tfs::metadata(&final_file_path).await?.len();
+                let msg = format!(
+                    "Skipping {} because the file is already completed [{}]",
+                    filename,
+                    pretty_bytes_size(final_file_size)
+                );
+                return Ok(msg);
+            }
+        }
 
         // extract metadata with a HEAD request, falling back to GET if needed
+        let url = file_link.url.as_str();
         let (content_length, supports_range, disposition_filename) =
             self.extract_metadata(url).await?;
 
@@ -157,10 +173,9 @@ impl<'a> DownloadContext<'a> {
             Some(ext) => format!("{filename_without_extension}.{ext}"),
             None => filename_without_extension,
         };
-        let output_dir = self.output_dir;
         let final_file_path = output_dir.join(&filename);
 
-        // skip completed download
+        // skip completed download (needed for the case where filename was resolved via headers)
         if final_file_path.exists() {
             let final_file_size = tfs::metadata(&final_file_path).await?.len();
             let msg = format!(
