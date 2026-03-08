@@ -67,8 +67,10 @@ impl ProgressBarManager {
         self.main_pb.inc(1);
     }
 
+    const PROGRESS_BAR_MSG_WIDTH: usize = 35;
+
     pub fn message_progress_bar(s: &str) -> String {
-        let max = 35; // arbitrary limit
+        let max = Self::PROGRESS_BAR_MSG_WIDTH;
         let count = s.chars().count();
 
         match count.cmp(&max) {

@@ -125,16 +125,16 @@ impl<'a> DownloadContext<'a> {
         raw_link: &str,
         pb_dl: &ProgressBar,
     ) -> Result<String, DlmError> {
+        // make link struct and extract URL
+        let file_link = FileLink::new(raw_link)?;
         // select between stop signal and download
         select! {
             () = self.token.cancelled() => Err(DlmError::ProgramInterrupted),
-            dl = self.download(raw_link, pb_dl) => dl,
+            dl = self.download(file_link, pb_dl) => dl,
         }
     }
 
-    async fn download(&self, raw_link: &str, pb_dl: &ProgressBar) -> Result<String, DlmError> {
-        // make link struct and extract URL
-        let file_link = FileLink::new(raw_link)?;
+    async fn download(&self, file_link: FileLink, pb_dl: &ProgressBar) -> Result<String, DlmError> {
         let url = file_link.url.as_str();
 
         // extract metadata with a HEAD request, falling back to GET if needed
@@ -228,13 +228,20 @@ impl<'a> DownloadContext<'a> {
         let final_file_size = file.metadata().await?.len();
 
         // check download complete
-        if let Some(expected) = content_length
-            && final_file_size != expected
-        {
-            return Err(DlmError::IncompleteDownload {
-                expected,
-                actual: final_file_size,
-            });
+        match content_length {
+            Some(expected) if final_file_size != expected => {
+                return Err(DlmError::IncompleteDownload {
+                    expected,
+                    actual: final_file_size,
+                });
+            }
+            None => {
+                self.pb_manager.log_above_progress_bars(&format!(
+                    "No Content-Length available for {}, cannot verify download completeness",
+                    filename
+                ));
+            }
+            _ => {}
         }
 
         // check if the destination already has a finished file
