@@ -123,22 +123,12 @@ impl<'a> DownloadContext<'a> {
         raw_link: &str,
         pb_dl: &ProgressBar,
     ) -> Result<String, DlmError> {
-        // make link struct and extract URL
         let file_link = FileLink::new(raw_link)?;
-        // select between stop signal and download
-        select! {
-            () = self.token.cancelled() => Err(DlmError::ProgramInterrupted),
-            dl = self.download(file_link, pb_dl) => dl,
-        }
-    }
-
-    async fn download(&self, file_link: FileLink, pb_dl: &ProgressBar) -> Result<String, DlmError> {
-        let output_dir = self.output_dir;
 
         // When the filename is fully known from the URL, skip the HEAD request if the file exists
         if file_link.extension.is_some() {
             let filename = file_link.filename();
-            let final_file_path = output_dir.join(&filename);
+            let final_file_path = self.output_dir.join(&filename);
             if final_file_path.exists() {
                 let final_file_size = tfs::metadata(&final_file_path).await?.len();
                 let msg = format!(
@@ -150,27 +140,30 @@ impl<'a> DownloadContext<'a> {
             }
         }
 
-        // extract metadata with a HEAD request, falling back to GET if needed
-        let url = file_link.url.as_str();
-        let (content_length, supports_range, disposition_filename) =
-            self.extract_metadata(url).await?;
+        // select between stop signal and download
+        select! {
+            () = self.token.cancelled() => Err(DlmError::ProgramInterrupted),
+            dl = self.download(file_link, pb_dl) => dl,
+        }
+    }
 
-        // resolve filename and extension
-        let (extension, filename_without_extension) = match file_link.extension {
-            Some(ext) => (Some(ext), file_link.filename_without_extension),
-            None => {
-                self.resolve_filename_extension(
-                    url,
-                    &file_link.filename_without_extension,
-                    disposition_filename,
-                )
-                .await?
-            }
-        };
-        let filename = match &extension {
-            Some(ext) => format!("{filename_without_extension}.{ext}"),
-            None => filename_without_extension,
-        };
+    async fn download(
+        &self,
+        mut file_link: FileLink,
+        pb_dl: &ProgressBar,
+    ) -> Result<String, DlmError> {
+        // extract metadata with a HEAD request, falling back to GET if needed
+        let (content_length, supports_range, disposition_filename) =
+            self.extract_metadata(&file_link.url).await?;
+
+        // resolve filename and extension if not already known from the URL
+        if file_link.extension.is_none() {
+            self.resolve_filename(&mut file_link, disposition_filename)
+                .await?;
+        }
+
+        let filename = file_link.filename();
+        let output_dir = self.output_dir;
         let final_file_path = output_dir.join(&filename);
 
         // skip completed download (needed for the case where filename was resolved via headers)
@@ -214,7 +207,7 @@ impl<'a> DownloadContext<'a> {
         };
 
         // building the request
-        let mut request = self.client.get(url);
+        let mut request = self.client.get(&file_link.url);
         if let Some(range) = query_range {
             request = request.header(RANGE, range);
         }
@@ -276,35 +269,44 @@ impl<'a> DownloadContext<'a> {
         Ok(msg)
     }
 
-    // Resolve filename when the URL does not contain the extension (e.g. redirect)
-    // Uses the Content-Disposition filename already extracted from the HEAD response
-    async fn resolve_filename_extension(
+    /// Resolve filename when the URL does not contain the extension (e.g. redirect).
+    /// Mutates the FileLink in place with the resolved extension and filename.
+    async fn resolve_filename(
         &self,
-        url: &str,
-        filename_without_extension: &str,
+        file_link: &mut FileLink,
         disposition_filename: Option<String>,
-    ) -> Result<(Option<String>, String), DlmError> {
+    ) -> Result<(), DlmError> {
         // try to get the file name from the Content-Disposition header
         if let Some(fh) = disposition_filename {
             let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
             if ext.is_some() {
-                return Ok((ext, filename));
+                file_link.extension = ext;
+                file_link.filename_without_extension = filename;
+                return Ok(());
             }
-            let msg =
-                format!("Could not determine file extension based on header {filename} for {url}");
+            let msg = format!(
+                "Could not determine file extension based on header {filename} for {}",
+                file_link.url
+            );
             self.pb_manager.log_above_progress_bars(&msg);
-            return Ok((None, filename_without_extension.to_string()));
+            return Ok(());
         }
 
         // check if it is maybe a redirect
-        match self.compute_filename_from_location_header(url).await? {
+        match self
+            .compute_filename_from_location_header(&file_link.url)
+            .await?
+        {
             None => {
-                let msg = format!("No extension found for {url}");
+                let msg = format!("No extension found for {}", file_link.url);
                 self.pb_manager.log_above_progress_bars(&msg);
-                Ok((None, filename_without_extension.to_string()))
             }
-            Some(fl) => Ok((fl.extension, fl.filename_without_extension)),
+            Some(fl) => {
+                file_link.extension = fl.extension;
+                file_link.filename_without_extension = fl.filename_without_extension;
+            }
         }
+        Ok(())
     }
 
     async fn compute_filename_from_location_header(
