@@ -462,14 +462,31 @@ fn percent_decode_filename(input: &str) -> String {
     let mut bytes = input.bytes();
     while let Some(b) = bytes.next() {
         if b == b'%' {
-            let decoded = bytes.next().zip(bytes.next()).and_then(|(hi, lo)| {
-                let hex = [hi, lo];
-                let s = std::str::from_utf8(&hex).ok()?;
-                u8::from_str_radix(s, 16).ok()
-            });
-            match decoded {
-                Some(d) => result.push(d),
-                None => result.push(b), // keep '%' as-is on malformed input
+            match (bytes.next(), bytes.next()) {
+                (Some(hi), Some(lo)) => {
+                    let hex = [hi, lo];
+                    match std::str::from_utf8(&hex)
+                        .ok()
+                        .and_then(|s| u8::from_str_radix(s, 16).ok())
+                    {
+                        Some(d) => result.push(d),
+                        None => {
+                            // invalid hex, preserve all three bytes
+                            result.push(b);
+                            result.push(hi);
+                            result.push(lo);
+                        }
+                    }
+                }
+                (Some(hi), None) => {
+                    // incomplete sequence, preserve both bytes
+                    result.push(b);
+                    result.push(hi);
+                }
+                _ => {
+                    // trailing '%', preserve it
+                    result.push(b);
+                }
             }
         } else {
             result.push(b);
@@ -546,5 +563,25 @@ mod downloader_tests {
     fn parse_filename_header_absolute_path() {
         let header = "attachment; filename=\"/tmp/evil.sh\"";
         assert_eq!(parse_filename_header(header), Some("evil.sh".to_owned()));
+    }
+
+    #[test]
+    fn percent_decode_valid() {
+        assert_eq!(percent_decode_filename("my%20file.txt"), "my file.txt");
+    }
+
+    #[test]
+    fn percent_decode_trailing_percent() {
+        assert_eq!(percent_decode_filename("file%"), "file%");
+    }
+
+    #[test]
+    fn percent_decode_incomplete_sequence() {
+        assert_eq!(percent_decode_filename("file%2"), "file%2");
+    }
+
+    #[test]
+    fn percent_decode_invalid_hex() {
+        assert_eq!(percent_decode_filename("file%GG"), "file%GG");
     }
 }
