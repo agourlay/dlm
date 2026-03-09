@@ -411,7 +411,7 @@ fn parse_filename_header(content_disposition: &str) -> Option<String> {
         if let Some((_, name)) = star_value.split_once("''") {
             let decoded = percent_decode_filename(name);
             if !decoded.is_empty() {
-                return Some(decoded);
+                return sanitize_filename(&decoded);
             }
         }
     }
@@ -422,10 +422,22 @@ fn parse_filename_header(content_disposition: &str) -> Option<String> {
             .and_then(|s| s.strip_suffix('"'))
             .unwrap_or(value);
         if !unquoted.is_empty() {
-            return Some(unquoted.to_string());
+            return sanitize_filename(unquoted);
         }
     }
     None
+}
+
+/// Strip path components to prevent directory traversal attacks.
+/// A malicious server could send `Content-Disposition: attachment; filename="../../etc/evil"`.
+fn sanitize_filename(name: &str) -> Option<String> {
+    // Use Path to extract just the file name, stripping any directory components
+    let file_name = Path::new(name).file_name()?.to_str()?;
+    if file_name.is_empty() {
+        None
+    } else {
+        Some(file_name.to_string())
+    }
 }
 
 /// Extract the value of a named parameter from a header value.
@@ -514,5 +526,23 @@ mod downloader_tests {
     fn parse_filename_header_no_filename() {
         let header = "attachment";
         assert_eq!(parse_filename_header(header), None);
+    }
+
+    #[test]
+    fn parse_filename_header_path_traversal() {
+        let header = "attachment; filename=\"../../../etc/passwd\"";
+        assert_eq!(parse_filename_header(header), Some("passwd".to_owned()));
+    }
+
+    #[test]
+    fn parse_filename_header_path_traversal_star() {
+        let header = "attachment; filename*=UTF-8''..%2F..%2Fevil.txt";
+        assert_eq!(parse_filename_header(header), Some("evil.txt".to_owned()));
+    }
+
+    #[test]
+    fn parse_filename_header_absolute_path() {
+        let header = "attachment; filename=\"/tmp/evil.sh\"";
+        assert_eq!(parse_filename_header(header), Some("evil.sh".to_owned()));
     }
 }
