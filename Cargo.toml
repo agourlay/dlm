@@ -18,7 +18,7 @@ reqwest = { version = "0.13.2", default-features = false, features = [
     "rustls",
 ] }
 tokio-stream = { version = "0.1.18", features = ["io-util"] }
-tokio = { version = "1.52.1", features = [
+tokio = { version = "1.52.2", features = [
     "rt-multi-thread",
     "fs",
     "macros",
