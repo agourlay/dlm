@@ -32,7 +32,7 @@ clap = { version = "4.6.1", features = ["cargo"] }
 indicatif = "0.18.4"
 thiserror = "2.0.18"
 rand = "0.10.1"
-jiff = "0.2.24"
+jiff = "0.2.25"
 percent-encoding = "2.3.2"
 base64 = "0.22.1"
 
