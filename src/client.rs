@@ -22,10 +22,16 @@ pub struct ClientConfig<'a> {
 }
 
 pub fn make_client(config: &ClientConfig<'_>, redirect: bool) -> Result<Client, DlmError> {
+    let connect_timeout = Duration::from_secs(u64::from(config.connection_timeout_secs));
+    // `connect_timeout` only bounds establishing the connection.
+    // `read_timeout` is a coarse backstop for a server that accepts the connection then goes
+    // silent — chiefly before sending the response headers, which the download
+    // loop's per-chunk timeout never reaches. It is set to 2x so it stays out
+    // of the way of that tighter per-chunk timeout during normal body streaming.
+    let read_timeout = connect_timeout * 2;
     let client_builder = Client::builder()
-        .connect_timeout(Duration::from_secs(u64::from(
-            config.connection_timeout_secs,
-        )))
+        .connect_timeout(connect_timeout)
+        .read_timeout(read_timeout)
         .danger_accept_invalid_certs(config.insecure);
 
     let client_builder = match config.user_agent {

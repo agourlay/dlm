@@ -544,6 +544,40 @@ async fn output_dir_is_a_file_errors() {
 }
 
 #[tokio::test]
+async fn connection_timeout_zero_is_rejected() {
+    // A zero timeout would make reqwest's connect/read timeouts fire instantly,
+    // breaking every download — clap must reject it at parse time.
+    let r = run_dlm_raw(&[
+        "http://example.invalid/foo.bin",
+        "--connection-timeout",
+        "0",
+    ])
+    .await;
+
+    assert_ne!(
+        r.code, 0,
+        "should exit non-zero on --connection-timeout 0: {r}"
+    );
+    assert!(
+        r.stderr.contains("connection-timeout") && r.stderr.contains("1.."),
+        "stderr should explain the value is out of range: {r}"
+    );
+}
+
+#[tokio::test]
+async fn max_concurrent_zero_is_rejected() {
+    // 0 concurrent downloads leaves no progress bar to claim, so every download
+    // would block forever — clap must reject it at parse time.
+    let r = run_dlm_raw(&["http://example.invalid/foo.bin", "--max-concurrent", "0"]).await;
+
+    assert_ne!(r.code, 0, "should exit non-zero on --max-concurrent 0: {r}");
+    assert!(
+        r.stderr.contains("max-concurrent") && r.stderr.contains("1.."),
+        "stderr should explain the value is out of range: {r}"
+    );
+}
+
+#[tokio::test]
 async fn range_416_during_resume_does_not_loop() {
     // Pre-seed a partial .part. Server's HEAD reports the file as resumable,
     // but any GET-with-Range returns 416. dlm must surface the error and
@@ -565,42 +599,50 @@ async fn range_416_during_resume_does_not_loop() {
 
 #[tokio::test]
 async fn part_file_already_at_expected_size() {
-    // The .part already has the full body. dlm doesn't recognise this as
-    // "already done" — it computes `bytes={total}-{total}` (a known buggy
-    // off-by-one), the server clamps the invalid range and serves the full
-    // body, dlm appends, the size mismatches, IncompleteDownload fires.
-    // `--retry 0` keeps the test fast. This test pins the SAFETY guarantee
-    // (no hang, no final file produced) — when dlm grows a real fast-path
-    // for "already complete", the body assertions can be tightened.
+    // The .part already holds the full body — e.g. dlm was killed between the
+    // last chunk and the rename. dlm recognises it as complete, skips the GET
+    // entirely, and finalises by renaming the .part to its final name.
     let server = TestServer::start().await;
     let url = server.url("/file/complete.bin");
     let tmp = TempDir::new().unwrap();
     std::fs::write(tmp.path().join("complete.bin.part"), FILE_BODY).unwrap();
 
-    let _r = no_hang(run_dlm_in(&[&url, "--retry", "0"], tmp.path())).await;
+    let r = no_hang(run_dlm_in(&[&url, "--retry", "0"], tmp.path())).await;
 
+    assert_eq!(r.code, 0, "a complete .part should finalise cleanly: {r}");
+    assert_eq!(
+        read(&tmp.path().join("complete.bin")),
+        FILE_BODY,
+        "the complete .part should be renamed to the final file"
+    );
     assert!(
-        !tmp.path().join("complete.bin").exists(),
-        "current behavior: no final file because dlm doesn't fast-path 'already complete'"
+        !tmp.path().join("complete.bin.part").exists(),
+        ".part should be renamed away after finalising"
     );
 }
 
 #[tokio::test]
 async fn part_file_larger_than_expected_total() {
     // `.part` exceeds HEAD's reported Content-Length — e.g., a stale file
-    // copied in by hand. dlm sends `bytes=N-CL` with N > CL (invalid).
-    // Same expectation as above: no hang, no final file produced.
+    // copied in by hand. dlm discards it and restarts the download from
+    // scratch, producing the correct final file.
     let server = TestServer::start().await;
     let url = server.url("/file/oversize.bin");
     let tmp = TempDir::new().unwrap();
     let oversize = vec![0u8; FILE_BODY.len() + 16 * 1024];
     std::fs::write(tmp.path().join("oversize.bin.part"), &oversize).unwrap();
 
-    let _r = no_hang(run_dlm_in(&[&url, "--retry", "0"], tmp.path())).await;
+    let r = no_hang(run_dlm_in(&[&url, "--retry", "0"], tmp.path())).await;
 
+    assert_eq!(r.code, 0, "oversize .part should restart and finish: {r}");
+    assert_eq!(
+        read(&tmp.path().join("oversize.bin")),
+        FILE_BODY,
+        "the stale oversized .part should be discarded and re-downloaded"
+    );
     assert!(
-        !tmp.path().join("oversize.bin").exists(),
-        "no final file should be produced when .part exceeds the expected total"
+        !tmp.path().join("oversize.bin.part").exists(),
+        ".part should be renamed away after finishing"
     );
 }
 
@@ -618,5 +660,31 @@ async fn server_disconnects_mid_body_does_not_hang() {
     assert!(
         !dir.path().join("data.bin").exists(),
         "no final file should be produced when the connection is cut mid-body"
+    );
+}
+
+#[tokio::test]
+async fn server_silent_before_headers_does_not_hang() {
+    // Server accepts the connection but never sends response headers. Without a
+    // read timeout, dlm's `send()` would block forever; with one it gives up
+    // after `read_timeout` (2x --connection-timeout, so ~2s here). `--retry 0`
+    // so the (retryable) timeout isn't re-attempted; `no_hang` turns a
+    // regression into a 10s timeout, not a 60s cargo hang. ~2s is well under
+    // both the 10s no_hang bound and the server's 30s stall.
+    let server = TestServer::start().await;
+    let url = server.url("/stall/data.bin");
+
+    let (_r, dir) = no_hang(run_dlm(&[
+        &url,
+        "--retry",
+        "0",
+        "--connection-timeout",
+        "1",
+    ]))
+    .await;
+
+    assert!(
+        !dir.path().join("data.bin").exists(),
+        "no file should be produced when the server never sends headers"
     );
 }

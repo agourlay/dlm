@@ -27,7 +27,9 @@ fn command() -> Command {
                 .long("max-concurrent")
                 .short('m')
                 .num_args(1)
-                .value_parser(clap::value_parser!(u32))
+                // reject 0: no progress bar would ever be available to claim,
+                // so every download would block forever.
+                .value_parser(clap::value_parser!(u32).range(1..))
                 .default_value("2"),
         )
         .arg(
@@ -89,7 +91,9 @@ fn command() -> Command {
                 .help("Connection timeout in seconds")
                 .long("connection-timeout")
                 .default_value("10")
-                .value_parser(clap::value_parser!(u32))
+                // reject 0: a zero Duration makes reqwest's connect/read
+                // timeouts fire immediately, breaking every download.
+                .value_parser(clap::value_parser!(u32).range(1..))
                 .num_args(1)
                 .required(false),
         )

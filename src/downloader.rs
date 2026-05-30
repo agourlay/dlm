@@ -1,7 +1,7 @@
 use indicatif::ProgressBar;
-use percent_encoding::percent_decode_str;
 use reqwest::Client;
-use reqwest::header::{HeaderMap, RANGE};
+use reqwest::header::RANGE;
+use std::cmp::Ordering;
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
 use tokio::time::{Duration, timeout};
@@ -11,10 +11,10 @@ use tokio_util::sync::CancellationToken;
 use crate::ProgressBarManager;
 use crate::client::{ClientConfig, make_client};
 use crate::dlm_error::DlmError;
-use crate::file_link::{FileLink, cleanup_filename};
+use crate::file_link::FileLink;
 use crate::headers::{
-    content_disposition_value, content_length_value, content_range_total_size, location_value,
-    supports_range_bytes,
+    content_disposition_value, content_length_value, location_value, parse_filename_header,
+    parse_metadata_from, supports_range_bytes,
 };
 use crate::utils::pretty_bytes_size;
 
@@ -141,13 +141,7 @@ impl<'a> DownloadContext<'a> {
             let filename = file_link.filename();
             let final_file_path = self.output_dir.join(&filename);
             if final_file_path.exists() {
-                let final_file_size = tfs::metadata(&final_file_path).await?.len();
-                let msg = format!(
-                    "Skipping {} because the file is already completed [{}]",
-                    filename,
-                    pretty_bytes_size(final_file_size)
-                );
-                return Ok(msg);
+                return already_completed_message(&final_file_path, &filename).await;
             }
         }
 
@@ -179,13 +173,7 @@ impl<'a> DownloadContext<'a> {
 
         // skip completed download (needed for the case where filename was resolved via headers)
         if final_file_path.exists() {
-            let final_file_size = tfs::metadata(&final_file_path).await?.len();
-            let msg = format!(
-                "Skipping {} because the file is already completed [{}]",
-                filename,
-                pretty_bytes_size(final_file_size)
-            );
-            return Ok(msg);
+            return already_completed_message(&final_file_path, &filename).await;
         }
 
         // setup progress bar for the file
@@ -195,7 +183,7 @@ impl<'a> DownloadContext<'a> {
         }
 
         let tmp_name = output_dir.join(format!("{filename}.part"));
-        let query_range = compute_query_range(
+        let resume_action = compute_resume_action(
             pb_dl,
             self.pb_manager,
             content_length,
@@ -204,22 +192,32 @@ impl<'a> DownloadContext<'a> {
         )
         .await?;
 
+        // Fast-path: the .part already holds the complete body (e.g. a prior
+        // run was killed between the last chunk and the rename). Finalize it
+        // without issuing a GET.
+        if matches!(resume_action, ResumeAction::AlreadyComplete) {
+            let final_file_size = tfs::metadata(&tmp_name).await?.len();
+            return finalize_download(&tmp_name, &final_file_path, &filename, final_file_size)
+                .await;
+        }
+
         // create/open file.part
         // no need for a BufWriter because the HTTP chunks are rather large
-        let mut file = match &query_range {
-            Some(_range) => {
+        let mut file = match &resume_action {
+            ResumeAction::Resume(_) => {
                 tfs::OpenOptions::new()
                     .append(true)
                     .create(false)
                     .open(&tmp_name)
                     .await?
             }
-            None => tfs::File::create(&tmp_name).await?,
+            // Fresh: truncate any stale .part (AlreadyComplete handled above).
+            _ => tfs::File::create(&tmp_name).await?,
         };
 
         // build and send the download request
         let mut request = self.client.get(&file_link.url);
-        if let Some(range) = query_range {
+        if let ResumeAction::Resume(range) = &resume_action {
             request = request.header(RANGE, range);
         }
         let mut dl_response = request.send().await?;
@@ -255,23 +253,7 @@ impl<'a> DownloadContext<'a> {
             _ => {}
         }
 
-        // check if the destination already has a finished file
-        if tfs::metadata(&final_file_path).await.is_ok() {
-            let message = format!(
-                "Can't finalize download because the file {} already exists",
-                final_file_path.display()
-            );
-            return Err(DlmError::other(message));
-        }
-
-        // rename part file to final
-        tfs::rename(&tmp_name, final_file_path).await?;
-        let msg = format!(
-            "Completed {} [{}]",
-            filename,
-            pretty_bytes_size(final_file_size)
-        );
-        Ok(msg)
+        finalize_download(&tmp_name, &final_file_path, &filename, final_file_size).await
     }
 
     /// Resolve filename when the URL does not contain the extension (e.g. redirect).
@@ -334,229 +316,249 @@ impl<'a> DownloadContext<'a> {
     }
 }
 
-/// Pull `(content-length, supports range, disposition filename)` out of a
-/// response's headers. Prefers `Content-Range` total over `Content-Length`
-/// because a `Range: bytes=0-0` probe makes `Content-Length` equal to 1.
-fn parse_metadata_from(headers: &HeaderMap) -> (Option<u64>, bool, Option<String>) {
-    let cl = content_range_total_size(headers).or_else(|| content_length_value(headers));
-    let sr = supports_range_bytes(headers);
-    let df = content_disposition_value(headers).and_then(parse_filename_header);
-    (cl, sr, df)
+/// What to do with a `.part` file when (re)starting a download.
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+enum ResumeAction {
+    /// Download the whole body fresh, truncating any existing `.part`.
+    Fresh,
+    /// Resume an existing `.part` by requesting an open-ended range from the
+    /// given offset (e.g. `bytes=1024-`).
+    Resume(String),
+    /// The `.part` already holds the complete body — finalize without a GET.
+    AlreadyComplete,
 }
 
-async fn compute_query_range(
+/// Decide how to (re)start a download given the state of any `.part` file on
+/// disk and what the server advertises. Also primes the progress bar position.
+async fn compute_resume_action(
     pb_dl: &ProgressBar,
     pb_manager: &ProgressBarManager,
     content_length: Option<u64>,
     supports_range: bool,
     tmp_name: &Path,
-) -> Result<Option<String>, DlmError> {
-    if tmp_name.exists() {
-        // get existing file size
-        let tmp_size = tfs::metadata(tmp_name).await?.len();
-        match (supports_range, content_length) {
-            (true, Some(cl)) => {
-                // set the progress bar to the current size
+) -> Result<ResumeAction, DlmError> {
+    if !tmp_name.exists() {
+        if !supports_range {
+            let log = format!(
+                "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
+                tmp_name.display()
+            );
+            pb_manager.log_above_progress_bars(&log);
+        }
+        return Ok(ResumeAction::Fresh);
+    }
+
+    // get existing file size
+    let tmp_size = tfs::metadata(tmp_name).await?.len();
+    match (supports_range, content_length) {
+        (true, Some(cl)) => match tmp_size.cmp(&cl) {
+            // already fully downloaded — finalize without re-fetching
+            Ordering::Equal => {
                 pb_dl.set_position(tmp_size);
-                // reset the elapsed time to avoid showing a really large speed
-                pb_dl.reset_elapsed();
-                let range_msg = format!("bytes={tmp_size}-{cl}");
-                Ok(Some(range_msg))
+                Ok(ResumeAction::AlreadyComplete)
             }
-            _ => {
+            // stale/corrupt .part bigger than the resource — start over
+            Ordering::Greater => {
                 let log = format!(
-                    "Found part file {} with size {tmp_size} but it will be overridden because the server does not support resuming the download (range bytes)",
+                    "Found part file {} with size {tmp_size} larger than the expected {cl} bytes, restarting the download from scratch",
                     tmp_name.display()
                 );
                 pb_manager.log_above_progress_bars(&log);
                 pb_dl.set_position(0);
-                Ok(None)
+                Ok(ResumeAction::Fresh)
             }
+            // genuine partial — resume from the current offset. An open-ended
+            // `bytes=N-` range lets the server stream to EOF and dodges the
+            // off-by-one of naming an explicit (inclusive) last byte index.
+            Ordering::Less => {
+                // set the progress bar to the current size
+                pb_dl.set_position(tmp_size);
+                // reset the elapsed time to avoid showing a really large speed
+                pb_dl.reset_elapsed();
+                Ok(ResumeAction::Resume(format!("bytes={tmp_size}-")))
+            }
+        },
+        // range supported but unknown total — can't tell where the body ends,
+        // so the .part can't be safely resumed
+        (true, None) => {
+            let log = format!(
+                "Found part file {} with size {tmp_size} but it will be overridden because the server did not report a content length",
+                tmp_name.display()
+            );
+            pb_manager.log_above_progress_bars(&log);
+            pb_dl.set_position(0);
+            Ok(ResumeAction::Fresh)
         }
-    } else if !supports_range {
-        let log = format!(
-            "The download of file {} should not be interrupted because the server does not support resuming the download (range bytes)",
-            tmp_name.display()
+        // server can't serve a partial body — restart from scratch
+        (false, _) => {
+            let log = format!(
+                "Found part file {} with size {tmp_size} but it will be overridden because the server does not support resuming the download (range bytes)",
+                tmp_name.display()
+            );
+            pb_manager.log_above_progress_bars(&log);
+            pb_dl.set_position(0);
+            Ok(ResumeAction::Fresh)
+        }
+    }
+}
+
+/// Build the "already completed, skipping" message for a destination file
+/// that exists before the download starts.
+async fn already_completed_message(
+    final_file_path: &Path,
+    filename: &str,
+) -> Result<String, DlmError> {
+    let final_file_size = tfs::metadata(final_file_path).await?.len();
+    Ok(format!(
+        "Skipping {filename} because the file is already completed [{}]",
+        pretty_bytes_size(final_file_size)
+    ))
+}
+
+/// Move a completed `.part` to its final path, guarding against a file that
+/// appeared at the destination in the meantime.
+async fn finalize_download(
+    tmp_name: &Path,
+    final_file_path: &Path,
+    filename: &str,
+    final_file_size: u64,
+) -> Result<String, DlmError> {
+    // check if the destination already has a finished file
+    if tfs::metadata(final_file_path).await.is_ok() {
+        let message = format!(
+            "Can't finalize download because the file {} already exists",
+            final_file_path.display()
         );
-        pb_manager.log_above_progress_bars(&log);
-        Ok(None)
-    } else {
-        Ok(None)
+        return Err(DlmError::other(message));
     }
-}
 
-fn parse_filename_header(content_disposition: &str) -> Option<String> {
-    // Try RFC 6266 filename*= (UTF-8 encoded) first, then fall back to filename=
-    // e.g. filename*=UTF-8''my%20file.txt
-    if let Some(star_value) = find_param(content_disposition, "filename*=") {
-        // strip encoding prefix like "UTF-8''" or "utf-8''"
-        if let Some((_, name)) = star_value.split_once("''") {
-            let decoded = percent_decode_filename(name);
-            if !decoded.is_empty() {
-                return sanitize_filename(&decoded);
-            }
-        }
-    }
-    // Standard filename= parameter (quoted or unquoted)
-    if let Some(value) = find_param(content_disposition, "filename=") {
-        let unquoted = value
-            .strip_prefix('"')
-            .and_then(|s| s.strip_suffix('"'))
-            .unwrap_or(value);
-        if !unquoted.is_empty() {
-            return sanitize_filename(unquoted);
-        }
-    }
-    None
-}
-
-/// Strip path components to prevent directory traversal attacks (a malicious
-/// server could send `Content-Disposition: attachment; filename="../../etc/evil"`)
-/// then run the standard filename cleanup so forbidden chars, control chars,
-/// trailing dots/whitespace, and Windows reserved names are all neutralised.
-fn sanitize_filename(name: &str) -> Option<String> {
-    let file_name = Path::new(name).file_name()?.to_str()?;
-    let cleaned = cleanup_filename(file_name);
-    if cleaned.is_empty() {
-        None
-    } else {
-        Some(cleaned)
-    }
-}
-
-/// Extract the value of a named parameter from a header value.
-/// Handles both `; param=value` and `; param="value"` forms.
-fn find_param<'a>(header: &'a str, param: &str) -> Option<&'a str> {
-    // Case-insensitive search for the parameter name
-    let lower = header.to_ascii_lowercase();
-    let param_lower = param.to_ascii_lowercase();
-    let idx = lower.find(&param_lower)?;
-    let value_start = idx + param.len();
-    let rest = &header[value_start..];
-    // Value ends at next `;` (or end of string), trimmed
-    let value = rest.split(';').next()?.trim();
-    if value.is_empty() { None } else { Some(value) }
-}
-
-/// Percent-decode a `filename*=` parameter value (lossy on invalid UTF-8).
-fn percent_decode_filename(input: &str) -> String {
-    percent_decode_str(input).decode_utf8_lossy().into_owned()
+    // rename part file to final
+    tfs::rename(tmp_name, final_file_path).await?;
+    Ok(format!(
+        "Completed {} [{}]",
+        filename,
+        pretty_bytes_size(final_file_size)
+    ))
 }
 
 #[cfg(test)]
-mod downloader_tests {
-    use crate::downloader::*;
+mod compute_resume_action_tests {
+    use super::*;
+    use indicatif::ProgressBar;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
 
-    #[test]
-    fn parse_filename_header_quoted() {
-        let header = "attachment; filename=\"code-stable-x64-1639562789.tar.gz\"";
-        assert_eq!(
-            parse_filename_header(header),
-            Some("code-stable-x64-1639562789.tar.gz".to_owned())
-        );
+    /// Create a `.part` file of exactly `size` bytes inside `dir`.
+    fn make_part(dir: &Path, size: u64) -> PathBuf {
+        let path = dir.join("file.part");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(size).unwrap();
+        path
     }
 
-    #[test]
-    fn parse_filename_header_unquoted() {
-        let header = "attachment; filename=report.pdf";
-        assert_eq!(parse_filename_header(header), Some("report.pdf".to_owned()));
+    #[tokio::test]
+    async fn no_part_file_starts_fresh() {
+        let dir = tempdir().unwrap();
+        let tmp_name = dir.path().join("missing.part");
+        let pb = ProgressBar::hidden();
+        let pbm = ProgressBarManager::hidden();
+
+        let action = compute_resume_action(&pb, &pbm, Some(100), true, &tmp_name)
+            .await
+            .unwrap();
+
+        assert_eq!(action, ResumeAction::Fresh);
     }
 
-    #[test]
-    fn parse_filename_header_inline() {
-        let header = "inline; filename=\"preview.png\"";
-        assert_eq!(
-            parse_filename_header(header),
-            Some("preview.png".to_owned())
-        );
+    #[tokio::test]
+    async fn no_part_file_starts_fresh_even_without_range_support() {
+        let dir = tempdir().unwrap();
+        let tmp_name = dir.path().join("missing.part");
+        let pb = ProgressBar::hidden();
+        let pbm = ProgressBarManager::hidden();
+
+        let action = compute_resume_action(&pb, &pbm, Some(100), false, &tmp_name)
+            .await
+            .unwrap();
+
+        assert_eq!(action, ResumeAction::Fresh);
     }
 
-    #[test]
-    fn parse_filename_header_star_utf8() {
-        let header = "attachment; filename*=UTF-8''my%20file.txt";
-        assert_eq!(
-            parse_filename_header(header),
-            Some("my file.txt".to_owned())
-        );
+    #[tokio::test]
+    async fn part_equal_to_content_length_is_already_complete() {
+        let dir = tempdir().unwrap();
+        let tmp_name = make_part(dir.path(), 100);
+        let pb = ProgressBar::hidden();
+        let pbm = ProgressBarManager::hidden();
+
+        let action = compute_resume_action(&pb, &pbm, Some(100), true, &tmp_name)
+            .await
+            .unwrap();
+
+        assert_eq!(action, ResumeAction::AlreadyComplete);
+        assert_eq!(pb.position(), 100);
     }
 
-    #[test]
-    fn parse_filename_header_star_takes_precedence() {
-        let header = "attachment; filename=\"fallback.txt\"; filename*=UTF-8''preferred.txt";
-        assert_eq!(
-            parse_filename_header(header),
-            Some("preferred.txt".to_owned())
-        );
+    #[tokio::test]
+    async fn part_larger_than_content_length_restarts_fresh() {
+        let dir = tempdir().unwrap();
+        let tmp_name = make_part(dir.path(), 150);
+        let pb = ProgressBar::hidden();
+        pb.set_position(150);
+        let pbm = ProgressBarManager::hidden();
+
+        let action = compute_resume_action(&pb, &pbm, Some(100), true, &tmp_name)
+            .await
+            .unwrap();
+
+        assert_eq!(action, ResumeAction::Fresh);
+        assert_eq!(pb.position(), 0);
     }
 
-    #[test]
-    fn parse_filename_header_no_filename() {
-        let header = "attachment";
-        assert_eq!(parse_filename_header(header), None);
+    #[tokio::test]
+    async fn part_smaller_than_content_length_resumes_from_offset() {
+        let dir = tempdir().unwrap();
+        let tmp_name = make_part(dir.path(), 40);
+        let pb = ProgressBar::hidden();
+        let pbm = ProgressBarManager::hidden();
+
+        let action = compute_resume_action(&pb, &pbm, Some(100), true, &tmp_name)
+            .await
+            .unwrap();
+
+        assert_eq!(action, ResumeAction::Resume("bytes=40-".to_owned()));
+        assert_eq!(pb.position(), 40);
     }
 
-    #[test]
-    fn parse_filename_header_path_traversal() {
-        let header = "attachment; filename=\"../../../etc/passwd\"";
-        assert_eq!(parse_filename_header(header), Some("passwd".to_owned()));
+    #[tokio::test]
+    async fn part_without_range_support_is_overridden() {
+        let dir = tempdir().unwrap();
+        let tmp_name = make_part(dir.path(), 40);
+        let pb = ProgressBar::hidden();
+        pb.set_position(40);
+        let pbm = ProgressBarManager::hidden();
+
+        let action = compute_resume_action(&pb, &pbm, Some(100), false, &tmp_name)
+            .await
+            .unwrap();
+
+        assert_eq!(action, ResumeAction::Fresh);
+        assert_eq!(pb.position(), 0);
     }
 
-    #[test]
-    fn parse_filename_header_path_traversal_star() {
-        let header = "attachment; filename*=UTF-8''..%2F..%2Fevil.txt";
-        assert_eq!(parse_filename_header(header), Some("evil.txt".to_owned()));
-    }
+    #[tokio::test]
+    async fn part_without_content_length_is_overridden() {
+        let dir = tempdir().unwrap();
+        let tmp_name = make_part(dir.path(), 40);
+        let pb = ProgressBar::hidden();
+        pb.set_position(40);
+        let pbm = ProgressBarManager::hidden();
 
-    #[test]
-    fn parse_filename_header_absolute_path() {
-        let header = "attachment; filename=\"/tmp/evil.sh\"";
-        assert_eq!(parse_filename_header(header), Some("evil.sh".to_owned()));
-    }
+        let action = compute_resume_action(&pb, &pbm, None, true, &tmp_name)
+            .await
+            .unwrap();
 
-    #[test]
-    fn parse_filename_header_strips_forbidden_chars() {
-        let header = "attachment; filename=\"weird:name*?.txt\"";
-        assert_eq!(
-            parse_filename_header(header),
-            Some("weird_name__.txt".to_owned())
-        );
-    }
-
-    #[test]
-    fn parse_filename_header_trims_trailing_dot() {
-        let header = "attachment; filename=\"report.\"";
-        assert_eq!(parse_filename_header(header), Some("report".to_owned()));
-    }
-
-    #[test]
-    fn parse_filename_header_windows_reserved_name_escaped() {
-        let header = "attachment; filename=\"CON\"";
-        assert_eq!(parse_filename_header(header), Some("CON_".to_owned()));
-    }
-
-    #[test]
-    fn parse_filename_header_dots_only_is_none() {
-        let header = "attachment; filename=\"...\"";
-        assert_eq!(parse_filename_header(header), None);
-    }
-
-    #[test]
-    fn percent_decode_valid() {
-        assert_eq!(percent_decode_filename("my%20file.txt"), "my file.txt");
-    }
-
-    #[test]
-    fn percent_decode_trailing_percent() {
-        assert_eq!(percent_decode_filename("file%"), "file%");
-    }
-
-    #[test]
-    fn percent_decode_incomplete_sequence() {
-        assert_eq!(percent_decode_filename("file%2"), "file%2");
-    }
-
-    #[test]
-    fn percent_decode_invalid_hex() {
-        assert_eq!(percent_decode_filename("file%GG"), "file%GG");
+        assert_eq!(action, ResumeAction::Fresh);
+        assert_eq!(pb.position(), 0);
     }
 }

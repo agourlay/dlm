@@ -104,4 +104,19 @@ impl ProgressBarManager {
             .await
             .expect("releasing progress bar should not fail");
     }
+
+    /// Test-only manager that draws nowhere, so unit tests can exercise code
+    /// paths that log above the progress bars without touching the terminal.
+    #[cfg(test)]
+    pub(crate) fn hidden() -> Self {
+        let mp = MultiProgress::with_draw_target(ProgressDrawTarget::hidden());
+        let main_pb = mp.add(ProgressBar::hidden());
+        let (tx, rx) = async_channel::bounded(1);
+        Self {
+            main_pb,
+            file_pb_count: 0,
+            tx,
+            rx,
+        }
+    }
 }

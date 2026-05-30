@@ -83,6 +83,7 @@ impl TestServer {
             .route("/check-query/{name}", get(check_query))
             .route("/always-416/{name}", any(always_416))
             .route("/cut-stream/{name}", any(cut_stream_mid_body))
+            .route("/stall/{name}", any(stall_before_headers))
             .with_state(state.clone());
 
         tokio::spawn(async move {
@@ -264,6 +265,15 @@ async fn always_416(method: Method, _path: Path<String>) -> Response {
     StatusCode::RANGE_NOT_SATISFIABLE.into_response()
 }
 
+/// Accepts the connection but never sends response headers (sleeps far longer
+/// than any sane connection timeout). Verifies dlm bounds the wait for the
+/// response and gives up instead of hanging when a server goes silent after
+/// accepting the connection.
+async fn stall_before_headers(_method: Method, _path: Path<String>) -> Response {
+    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+    StatusCode::OK.into_response()
+}
+
 // ---------- helpers ----------
 
 fn redirect(location: &str) -> Response {
@@ -323,9 +333,10 @@ fn serve_with_range(body: &'static [u8], headers: &HeaderMap, support_range: boo
 }
 
 /// Parse `bytes=N-M` (M optional, defaults to total-1). Returns inclusive
-/// range. End values past the body are clamped to `total - 1` to match
-/// permissive real-world servers (and to mask dlm's off-by-one in
-/// `compute_query_range` which sends `bytes=N-CL` instead of `bytes=N-CL-1`).
+/// range. dlm sends two shapes: a closed `bytes=0-0` metadata probe and an
+/// open-ended `bytes=N-` resume; both are handled here. The `end.min(total-1)`
+/// clamp models permissive real-world servers but is not exercised by dlm
+/// itself, which no longer names an end past the body.
 fn parse_byte_range(value: &str, total: usize) -> Option<(usize, usize)> {
     let rest = value.strip_prefix("bytes=")?;
     let (start, end) = rest.split_once('-')?;
