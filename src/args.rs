@@ -183,12 +183,6 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         .get_one("maxConcurrentDownloads")
         .expect("impossible");
 
-    if max_concurrent_downloads == 0 {
-        return Err(CliArgumentError {
-            message: "'maxConcurrentDownloads' must be positive".to_string(),
-        });
-    }
-
     let url = matches.get_one::<String>("url");
     let input_file = matches.get_one::<String>("inputFile");
 
