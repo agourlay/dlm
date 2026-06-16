@@ -1,6 +1,9 @@
 use crate::DlmError;
 use async_channel::{Receiver, Sender};
-use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
+use indicatif::{
+    HumanBytes, HumanDuration, MultiProgress, ProgressBar, ProgressDrawTarget, ProgressState,
+    ProgressStyle,
+};
 use jiff::Zoned;
 use std::cmp::{Ordering, min};
 
@@ -37,6 +40,27 @@ impl ProgressBarManager {
         let dl_style = ProgressStyle::default_bar()
             .template("{msg} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} (speed:{bytes_per_sec}) (eta:{eta})")
             .expect("templating should not fail")
+            // Until the first byte is received the estimator has no data and the
+            // default `{bytes_per_sec}`/`{eta}` would show `0/s` and `eta:0s`,
+            // which misleadingly reads as "almost done" while the request is
+            // still connecting. Render `--` whenever no real speed is known
+            // (before the first byte, and during long stalls).
+            .with_key("bytes_per_sec", |state: &ProgressState, w: &mut dyn std::fmt::Write| {
+                let per_sec = state.per_sec();
+                if per_sec > 0.0 && per_sec.is_finite() {
+                    write!(w, "{}/s", HumanBytes(per_sec as u64)).unwrap();
+                } else {
+                    write!(w, "--").unwrap();
+                }
+            })
+            .with_key("eta", |state: &ProgressState, w: &mut dyn std::fmt::Write| {
+                let per_sec = state.per_sec();
+                if per_sec > 0.0 && per_sec.is_finite() {
+                    write!(w, "{:#}", HumanDuration(state.eta())).unwrap();
+                } else {
+                    write!(w, "--").unwrap();
+                }
+            })
             .progress_chars("#>-");
 
         for _ in 0..file_pb_count {
@@ -117,6 +141,81 @@ impl ProgressBarManager {
             file_pb_count: 0,
             tx,
             rx,
+        }
+    }
+}
+
+#[cfg(test)]
+mod recycling_tests {
+    use super::*;
+
+    /// Build a manager holding `count` real (but non-drawing) file progress
+    /// bars, mirroring `init` without touching the terminal.
+    async fn manager_with_bars(count: usize) -> ProgressBarManager {
+        let mp = MultiProgress::with_draw_target(ProgressDrawTarget::hidden());
+        let main_pb = mp.add(ProgressBar::hidden());
+        let (tx, rx) = async_channel::bounded(count.max(1));
+        for _ in 0..count {
+            let pb = mp.add(ProgressBar::hidden());
+            pb.set_message(ProgressBarManager::message_progress_bar(PENDING));
+            tx.send(pb).await.unwrap();
+        }
+        ProgressBarManager {
+            main_pb,
+            file_pb_count: count as u64,
+            tx,
+            rx,
+        }
+    }
+
+    /// A bar that already served a (resumed) download must come back from the
+    /// recycle pool with no leftover position or speed, so the next download
+    /// starts from a clean slate and renders `--` until its own first byte.
+    #[tokio::test]
+    async fn recycled_bar_carries_no_position_or_speed() {
+        let mgr = manager_with_bars(1).await;
+
+        // simulate a full download on the claimed bar
+        let pb = mgr.claim_progress_bar().await;
+        pb.set_length(1000);
+        pb.set_position(400); // resumed offset
+        pb.inc(600); // streamed to completion
+        assert_eq!(pb.position(), 1000);
+
+        // recycle it back to the pool
+        mgr.release_progress_bar(pb).await;
+
+        // the next download claims the same underlying bar
+        let pb_next = mgr.claim_progress_bar().await;
+        assert_eq!(
+            pb_next.position(),
+            0,
+            "recycled bar must not carry the previous download's position"
+        );
+        assert_eq!(
+            pb_next.per_sec(),
+            0.0,
+            "recycled bar must report no speed (renders as `--`) until its first byte"
+        );
+    }
+
+    /// With more downloads than bars, every release must hand back a clean bar
+    /// for the queued downloads to claim.
+    #[tokio::test]
+    async fn bar_stays_clean_across_several_recycles() {
+        let mgr = manager_with_bars(1).await;
+
+        for offset in [100_u64, 250, 700] {
+            let pb = mgr.claim_progress_bar().await;
+            pb.set_length(1000);
+            pb.set_position(offset);
+            pb.inc(1000 - offset);
+            mgr.release_progress_bar(pb).await;
+
+            let pb_check = mgr.claim_progress_bar().await;
+            assert_eq!(pb_check.position(), 0);
+            assert_eq!(pb_check.per_sec(), 0.0);
+            mgr.release_progress_bar(pb_check).await;
         }
     }
 }

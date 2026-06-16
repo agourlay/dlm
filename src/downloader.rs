@@ -226,6 +226,13 @@ impl<'a> DownloadContext<'a> {
             return Err(DlmError::ResponseStatusNotSuccess { status_code });
         }
 
+        // Start the speed/ETA clock from the first byte rather than from when the
+        // progress bar was set up. The metadata probes, redirect resolution and
+        // the initial GET round-trip above can take a long time on high-latency
+        // servers and would otherwise skew the displayed speed and ETA.
+        // `reset_elapsed` also resets the ETA estimator (Reset::Elapsed).
+        pb_dl.reset_elapsed();
+
         // incremental save chunk by chunk into part file
         let chunk_timeout = Duration::from_secs(u64::from(self.connection_timeout_secs));
         while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
@@ -371,10 +378,9 @@ async fn compute_resume_action(
             // `bytes=N-` range lets the server stream to EOF and dodges the
             // off-by-one of naming an explicit (inclusive) last byte index.
             Ordering::Less => {
-                // set the progress bar to the current size
+                // set the progress bar to the current size; the elapsed/ETA
+                // clock is (re)started from the first byte in `download`.
                 pb_dl.set_position(tmp_size);
-                // reset the elapsed time to avoid showing a really large speed
-                pb_dl.reset_elapsed();
                 Ok(ResumeAction::Resume(format!("bytes={tmp_size}-")))
             }
         },
