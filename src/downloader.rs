@@ -22,6 +22,7 @@ pub struct DownloadContext<'a> {
     client: Client,
     client_no_redirect: Client,
     connection_timeout_secs: u32,
+    read_timeout_secs: u32,
     output_dir: &'a Path,
     token: &'a CancellationToken,
     pb_manager: &'a ProgressBarManager,
@@ -38,6 +39,7 @@ impl<'a> DownloadContext<'a> {
             client: make_client(client_config, true)?,
             client_no_redirect: make_client(client_config, false)?,
             connection_timeout_secs: client_config.connection_timeout_secs,
+            read_timeout_secs: client_config.read_timeout_secs,
             output_dir,
             token,
             pb_manager,
@@ -226,16 +228,41 @@ impl<'a> DownloadContext<'a> {
             return Err(DlmError::ResponseStatusNotSuccess { status_code });
         }
 
-        // Start the speed/ETA clock from the first byte rather than from when the
-        // progress bar was set up. The metadata probes, redirect resolution and
-        // the initial GET round-trip above can take a long time on high-latency
-        // servers and would otherwise skew the displayed speed and ETA.
-        // `reset_elapsed` also resets the ETA estimator (Reset::Elapsed).
-        pb_dl.reset_elapsed();
+        // Two distinct timeouts guard the body stream:
+        // - `first_byte_timeout` bounds the wait for the server to *start*
+        //   sending the body. Slow-to-respond servers (high time-to-first-byte,
+        //   redirect/queueing latency) can legitimately need much longer than a
+        //   stall, so this uses the generous read timeout; `0` waits forever.
+        // - `stall_timeout` bounds the gap between subsequent chunks once the
+        //   body is flowing, catching a connection that goes silent mid-transfer.
+        let first_byte_timeout = match self.read_timeout_secs {
+            0 => None,
+            secs => Some(Duration::from_secs(u64::from(secs))),
+        };
+        let stall_timeout = Duration::from_secs(u64::from(self.connection_timeout_secs));
 
         // incremental save chunk by chunk into part file
-        let chunk_timeout = Duration::from_secs(u64::from(self.connection_timeout_secs));
-        while let Some(chunk) = timeout(chunk_timeout, dl_response.chunk()).await?? {
+        let mut first_chunk = true;
+        loop {
+            let next_chunk = dl_response.chunk();
+            let chunk = if first_chunk {
+                match first_byte_timeout {
+                    Some(t) => timeout(t, next_chunk).await??,
+                    None => next_chunk.await?,
+                }
+            } else {
+                timeout(stall_timeout, next_chunk).await??
+            };
+            let Some(chunk) = chunk else { break };
+            if first_chunk {
+                // Start the speed/ETA clock from the first received byte, leaving
+                // out connection setup and the (possibly long) wait for a slow
+                // server to begin responding, which would otherwise skew the
+                // displayed speed and ETA. `reset_elapsed` also resets the ETA
+                // estimator (Reset::Elapsed).
+                pb_dl.reset_elapsed();
+                first_chunk = false;
+            }
             file.write_all(&chunk).await?;
             pb_dl.inc(chunk.len() as u64);
         }

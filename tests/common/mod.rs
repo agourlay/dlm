@@ -84,6 +84,7 @@ impl TestServer {
             .route("/always-416/{name}", any(always_416))
             .route("/cut-stream/{name}", any(cut_stream_mid_body))
             .route("/stall/{name}", any(stall_before_headers))
+            .route("/slow-first-byte/{name}", any(slow_first_byte))
             .with_state(state.clone());
 
         tokio::spawn(async move {
@@ -272,6 +273,26 @@ async fn always_416(method: Method, _path: Path<String>) -> Response {
 async fn stall_before_headers(_method: Method, _path: Path<String>) -> Response {
     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
     StatusCode::OK.into_response()
+}
+
+/// HEAD reports the full size immediately; GET sends response headers right
+/// away but delays the first body byte by ~2s, emulating a slow-to-respond
+/// server with a high time-to-first-byte. Verifies dlm waits for the body to
+/// start (bounded by the read timeout) instead of aborting on the first chunk.
+async fn slow_first_byte(method: Method, _path: Path<String>) -> Response {
+    if method == Method::HEAD {
+        return head_metadata(FILE_BODY);
+    }
+    let stream = futures_util::stream::once(async {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        Ok::<Vec<u8>, std::io::Error>(FILE_BODY.to_vec())
+    });
+    let mut resp = Response::new(Body::from_stream(stream));
+    resp.headers_mut().insert(
+        CONTENT_LENGTH,
+        HeaderValue::from_str(&FILE_BODY.len().to_string()).unwrap(),
+    );
+    resp
 }
 
 // ---------- helpers ----------

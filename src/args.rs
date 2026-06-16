@@ -98,6 +98,17 @@ fn command() -> Command {
                 .required(false),
         )
         .arg(
+            Arg::new("readTimeoutSecs")
+                .help("Read timeout in seconds (0 = wait indefinitely)")
+                .long("read-timeout")
+                .default_value("60")
+                // 0 is allowed here (unlike --connection-timeout): it means
+                // "wait indefinitely" for a slow server to start responding.
+                .value_parser(clap::value_parser!(u32))
+                .num_args(1)
+                .required(false),
+        )
+        .arg(
             Arg::new("insecure")
                 .help("Accept invalid TLS certificates")
                 .long("insecure")
@@ -135,6 +146,7 @@ pub struct Arguments {
     pub proxy: Option<String>,
     pub retry: u32,
     pub connection_timeout_secs: u32,
+    pub read_timeout_secs: u32,
     pub insecure: bool,
     pub headers: Vec<(String, String)>,
     pub basic_auth: Option<(String, String)>,
@@ -237,6 +249,12 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         .copied()
         .expect("impossible");
 
+    // safe match because of default value
+    let read_timeout_secs = matches
+        .get_one::<u32>("readTimeoutSecs")
+        .copied()
+        .expect("impossible");
+
     let insecure = matches.get_flag("insecure");
 
     let headers = matches
@@ -259,6 +277,7 @@ pub fn get_args() -> Result<Arguments, DlmError> {
         proxy,
         retry,
         connection_timeout_secs,
+        read_timeout_secs,
         insecure,
         headers,
         basic_auth,
@@ -318,6 +337,9 @@ mod args_tests {
     --connection-timeout <connectionTimeoutSecs>
     Connection timeout in seconds
     [default: 10]
+    --read-timeout <readTimeoutSecs>
+    Read timeout in seconds (0 = wait indefinitely)
+    [default: 60]
     -k, --insecure
     Accept invalid TLS certificates
     -H, --header <header>

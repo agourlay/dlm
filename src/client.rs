@@ -16,6 +16,7 @@ pub struct ClientConfig<'a> {
     pub user_agent: Option<&'a UserAgent>,
     pub proxy: Option<&'a str>,
     pub connection_timeout_secs: u32,
+    pub read_timeout_secs: u32,
     pub insecure: bool,
     pub basic_auth: Option<(&'a str, &'a str)>,
     pub headers: &'a [(String, String)],
@@ -23,16 +24,22 @@ pub struct ClientConfig<'a> {
 
 pub fn make_client(config: &ClientConfig<'_>, redirect: bool) -> Result<Client, DlmError> {
     let connect_timeout = Duration::from_secs(u64::from(config.connection_timeout_secs));
-    // `connect_timeout` only bounds establishing the connection.
-    // `read_timeout` is a coarse backstop for a server that accepts the connection then goes
-    // silent — chiefly before sending the response headers, which the download
-    // loop's per-chunk timeout never reaches. It is set to 2x so it stays out
-    // of the way of that tighter per-chunk timeout during normal body streaming.
-    let read_timeout = connect_timeout * 2;
     let client_builder = Client::builder()
         .connect_timeout(connect_timeout)
-        .read_timeout(read_timeout)
         .danger_accept_invalid_certs(config.insecure);
+
+    // `connect_timeout` only bounds establishing the connection. `read_timeout`
+    // bounds how long the server may go silent — chiefly before sending the
+    // response headers (which the download loop's per-chunk timeout never
+    // reaches). It is kept separate from, and more generous than, the connect
+    // timeout so that slow-to-respond servers are tolerated instead of being
+    // aborted and retried in a loop. `0` disables it entirely (wait
+    // indefinitely, like `wget`).
+    let client_builder = if config.read_timeout_secs == 0 {
+        client_builder
+    } else {
+        client_builder.read_timeout(Duration::from_secs(u64::from(config.read_timeout_secs)))
+    };
 
     let client_builder = match config.user_agent {
         Some(UserAgent::CustomUserAgent(ua)) => client_builder.user_agent(ua),

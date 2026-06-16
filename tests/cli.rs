@@ -667,24 +667,47 @@ async fn server_disconnects_mid_body_does_not_hang() {
 async fn server_silent_before_headers_does_not_hang() {
     // Server accepts the connection but never sends response headers. Without a
     // read timeout, dlm's `send()` would block forever; with one it gives up
-    // after `read_timeout` (2x --connection-timeout, so ~2s here). `--retry 0`
-    // so the (retryable) timeout isn't re-attempted; `no_hang` turns a
-    // regression into a 10s timeout, not a 60s cargo hang. ~2s is well under
-    // both the 10s no_hang bound and the server's 30s stall.
+    // after `--read-timeout` (1s here). `--retry 0` so the (retryable) timeout
+    // isn't re-attempted; `no_hang` turns a regression into a 10s timeout, not
+    // a 60s cargo hang. 1s is well under both the 10s no_hang bound and the
+    // server's 30s stall.
     let server = TestServer::start().await;
     let url = server.url("/stall/data.bin");
 
-    let (_r, dir) = no_hang(run_dlm(&[
-        &url,
-        "--retry",
-        "0",
-        "--connection-timeout",
-        "1",
-    ]))
-    .await;
+    let (_r, dir) = no_hang(run_dlm(&[&url, "--retry", "0", "--read-timeout", "1"])).await;
 
     assert!(
         !dir.path().join("data.bin").exists(),
         "no file should be produced when the server never sends headers"
     );
+}
+
+#[tokio::test]
+async fn slow_first_byte_is_tolerated() {
+    // Server sends headers immediately but delays the first body byte ~2s — a
+    // high time-to-first-byte, slow-to-respond server. That is longer than the
+    // 1s connection/stall timeout but within the 5s read timeout, so the
+    // download must succeed rather than time out on the first chunk and retry
+    // (the bug in issue #461, where one per-chunk timeout was tied to
+    // --connection-timeout and tripped on slow starts). `--retry 0` proves a
+    // single attempt succeeds.
+    let server = TestServer::start().await;
+    let url = server.url("/slow-first-byte/data.bin");
+
+    let (r, dir) = no_hang(run_dlm(&[
+        &url,
+        "--retry",
+        "0",
+        "--connection-timeout",
+        "1",
+        "--read-timeout",
+        "5",
+    ]))
+    .await;
+
+    assert_eq!(
+        r.code, 0,
+        "slow first byte should download successfully: {r}"
+    );
+    assert_eq!(read(&dir.path().join("data.bin")), FILE_BODY);
 }

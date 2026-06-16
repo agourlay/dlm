@@ -50,6 +50,8 @@ Options:
           Number of retries on network error [default: 10]
       --connection-timeout <connectionTimeoutSecs>
           Connection timeout in seconds [default: 10]
+      --read-timeout <readTimeoutSecs>
+          Read timeout in seconds (0 = wait indefinitely) [default: 60]
   -k, --insecure
           Accept invalid TLS certificates
   -H, --header <header>
