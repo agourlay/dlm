@@ -181,7 +181,7 @@ impl ProgressBarManager {
             .progress_chars("#>-");
 
         for _ in 0..file_pb_count {
-            let file_pb = mp.add(ProgressBar::new(0));
+            let file_pb = mp.add(ProgressBar::no_length());
             file_pb.set_style(dl_style.clone());
             file_pb.set_message(pad_message(PENDING, msg_width));
             tx.send(file_pb).await.expect("channel should not fail");
@@ -279,7 +279,9 @@ impl ProgressBarManager {
     }
 
     pub async fn release_progress_bar(&self, pb: ProgressBar) {
+        // `reset` clears position and timing but not the length
         pb.reset();
+        pb.unset_length();
         pb.set_message(self.message_progress_bar(PENDING));
         self.tx
             .send(pb)
@@ -446,6 +448,11 @@ mod recycling_tests {
             pb_next.per_sec(),
             0.0,
             "recycled bar must report no speed (renders as `--`) until its first byte"
+        );
+        assert_eq!(
+            pb_next.length(),
+            None,
+            "recycled bar must not carry the previous download's total"
         );
     }
 

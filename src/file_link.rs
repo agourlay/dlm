@@ -10,9 +10,20 @@ const FORBIDDEN_WINDOWS_NAMES: &[&str] = &[
     "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
-/// Cap on filename byte length — most filesystems (ext4, NTFS, APFS) reject
-/// single components longer than this.
-const MAX_FILENAME_BYTES: usize = 255;
+/// Suffix of the file a download is written to until it completes.
+pub const PART_SUFFIX: &str = ".part";
+
+/// Most filesystems (ext4, NTFS, APFS) reject single path components longer
+/// than this.
+const MAX_COMPONENT_BYTES: usize = 255;
+
+/// Cap on filename byte length. Leaves room for [`PART_SUFFIX`], so the
+/// in-progress `<name>.part` file fits the filesystem limit as well.
+const MAX_FILENAME_BYTES: usize = MAX_COMPONENT_BYTES - PART_SUFFIX.len();
+
+/// Longest extension (dot included) preserved when a name is truncated.
+/// Anything longer is more likely part of the name than a real extension.
+const MAX_KEPT_EXTENSION_BYTES: usize = 16;
 
 /// Returns a filename that is safe to use on Windows, Linux, and macOS.
 ///
@@ -24,7 +35,8 @@ const MAX_FILENAME_BYTES: usize = 255;
 ///   `.gitignore` survive.
 /// - Suffixes Windows reserved device names (CON, PRN, AUX, NUL, COM1-9,
 ///   LPT1-9) with `_`, with or without an extension (`CON.txt` → `CON_.txt`).
-/// - Truncates to 255 bytes at a UTF-8 char boundary.
+/// - Truncates to 250 bytes at a UTF-8 char boundary, leaving room for the
+///   `.part` suffix. A short extension is kept, the stem is cut instead.
 ///
 /// Does not strip path components — callers handling header-supplied names
 /// must run `Path::new(input).file_name()` first to defeat `../`-style
@@ -55,14 +67,32 @@ pub fn cleanup_filename(input: &str) -> String {
     }
 
     if result.len() > MAX_FILENAME_BYTES {
-        let mut end = MAX_FILENAME_BYTES;
-        while end > 0 && !result.is_char_boundary(end) {
-            end -= 1;
-        }
-        result.truncate(end);
+        result = truncate_keeping_extension(&result);
     }
 
     result
+}
+
+/// Cut `name` down to [`MAX_FILENAME_BYTES`] at a UTF-8 char boundary,
+/// shortening the stem so a short extension survives (`<long>.iso` stays an
+/// `.iso`).
+fn truncate_keeping_extension(name: &str) -> String {
+    let extension = name
+        .rfind('.')
+        .filter(|&i| i > 0 && name.len() - i <= MAX_KEPT_EXTENSION_BYTES)
+        .map_or("", |i| &name[i..]);
+    let mut end = MAX_FILENAME_BYTES - extension.len();
+    while end > 0 && !name.is_char_boundary(end) {
+        end -= 1;
+    }
+    let stem = &name[..end];
+    if extension.is_empty() {
+        // the cut may land on a dot or a space, which Windows rejects at the end
+        stem.trim_end_matches(|c: char| c.is_whitespace() || c == '.')
+            .to_string()
+    } else {
+        format!("{stem}{extension}")
+    }
 }
 
 #[derive(Debug)]
@@ -136,7 +166,7 @@ impl FileLink {
             None => self.filename_without_extension.clone(),
         };
         // Re-run cleanup on the joined name so the combined byte length still
-        // fits the 255-byte limit when the extension pushes over.
+        // fits the byte limit when the extension pushes over.
         cleanup_filename(&joined)
     }
 
@@ -403,16 +433,45 @@ mod file_link_tests {
     }
 
     #[test]
-    fn cleanup_truncates_to_255_bytes() {
+    fn cleanup_truncates_to_leave_room_for_the_part_suffix() {
         let cleaned = cleanup_filename(&"a".repeat(300));
-        assert_eq!(cleaned.len(), 255);
+        assert_eq!(cleaned.len(), 250);
+        assert!(cleaned.len() + PART_SUFFIX.len() <= 255);
+    }
+
+    #[test]
+    fn cleanup_truncation_keeps_a_short_extension() {
+        let cleaned = cleanup_filename(&format!("{}.iso", "a".repeat(300)));
+        assert_eq!(cleaned.len(), 250);
+        assert!(cleaned.ends_with("aaa.iso"), "{cleaned}");
+    }
+
+    #[test]
+    fn cleanup_truncation_does_not_keep_an_overlong_extension() {
+        let cleaned = cleanup_filename(&format!("{}.{}", "a".repeat(300), "b".repeat(50)));
+        assert_eq!(cleaned, "a".repeat(250));
+    }
+
+    #[test]
+    fn cleanup_truncation_does_not_end_on_a_dot_or_space() {
+        // cut at 250 lands right after "x. " - trimmed back to the "x"
+        let name = format!("{}x. {}", "a".repeat(247), "b".repeat(100));
+        assert_eq!(cleanup_filename(&name), format!("{}x", "a".repeat(247)));
+    }
+
+    #[test]
+    fn long_url_name_and_its_part_file_fit_the_filesystem_limit() {
+        let url = format!("https://example.com/{}.bin", "a".repeat(300));
+        let name = FileLink::new(&url).unwrap().filename();
+        assert!(name.ends_with(".bin"), "{name}");
+        assert!(name.len() + PART_SUFFIX.len() <= 255, "{}", name.len());
     }
 
     #[test]
     fn cleanup_truncates_at_utf8_char_boundary() {
-        // Each 'ä' is 2 bytes; 200 of them = 400 bytes, well over 255.
+        // Each 'ä' is 2 bytes; 200 of them = 400 bytes, well over 250.
         let cleaned = cleanup_filename(&"ä".repeat(200));
-        assert!(cleaned.len() <= 255);
+        assert!(cleaned.len() <= 250);
         // String::truncate panics on a non-boundary, so this implicitly
         // confirms we landed on one — assert it explicitly anyway.
         assert!(cleaned.is_char_boundary(cleaned.len()));

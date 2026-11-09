@@ -74,6 +74,7 @@ impl TestServer {
             .route("/file/{name}", get(serve_file))
             .route("/no-range/{name}", get(serve_no_range))
             .route("/reject-head/{name}", any(reject_head_get_works))
+            .route("/forbid-head/{name}", any(forbid_head_get_works))
             .route("/zero-cl/{name}", any(zero_content_length_head))
             .route("/redirect/{name}", get(redirect_to_file))
             .route("/redirect-no-ext", get(redirect_no_ext))
@@ -142,6 +143,19 @@ async fn serve_no_range(Path(_name): Path<String>, headers: HeaderMap) -> Respon
 }
 
 /// HEAD returns 405; GET works (with Range support).
+/// HEAD answers 403, GET works - what a presigned S3/GCS URL signed for GET
+/// does.
+async fn forbid_head_get_works(
+    method: Method,
+    Path(_name): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    if method == Method::HEAD {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    serve_with_range(FILE_BODY, &headers, true)
+}
+
 async fn reject_head_get_works(
     method: Method,
     Path(_name): Path<String>,

@@ -120,6 +120,33 @@ async fn head_405_falls_back_to_get() {
 }
 
 #[tokio::test]
+async fn head_403_falls_back_to_get() {
+    // Presigned URLs signed for GET answer HEAD with 403; the GET still works.
+    let server = TestServer::start().await;
+    let url = server.url("/forbid-head/signed.bin");
+
+    let (r, dir) = run_dlm(&[&url]).await;
+
+    assert_eq!(r.code, 0, "{r}");
+    assert_eq!(read(&dir.path().join("signed.bin")), FILE_BODY);
+}
+
+#[tokio::test]
+async fn long_filename_is_truncated_so_its_part_file_fits() {
+    // 300 bytes of name: the saved file and its `.part` must both fit the
+    // 255-byte filesystem limit, and the extension must survive the cut.
+    let server = TestServer::start().await;
+    let long = "a".repeat(300);
+    let url = server.url(&format!("/file/{long}.bin"));
+
+    let (r, dir) = run_dlm(&[&url]).await;
+
+    assert_eq!(r.code, 0, "{r}");
+    let expected = format!("{}.bin", "a".repeat(246));
+    assert_eq!(read(&dir.path().join(expected)), FILE_BODY);
+}
+
+#[tokio::test]
 async fn head_zero_content_length_falls_back_to_get_probe() {
     let server = TestServer::start().await;
     let url = server.url("/zero-cl/data.bin");
@@ -570,16 +597,17 @@ async fn interrupt_during_retry_backoff_exits_promptly() {
         .spawn()
         .expect("failed to spawn dlm");
 
-    // Each attempt is one failed HEAD. After the 6th, dlm sleeps 4s before
-    // the next one (500ms x3, 1s, 2s, then 4s).
+    // Each attempt is a failed HEAD plus the failed GET it falls back to.
+    // After the 6th attempt, dlm sleeps 4s before the next one (500ms x3,
+    // 1s, 2s, then 4s).
     for _ in 0..200 {
-        if server.flaky_remaining() <= 94 {
+        if server.flaky_remaining() <= 88 {
             break;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     assert!(
-        server.flaky_remaining() <= 94,
+        server.flaky_remaining() <= 88,
         "dlm should have retried 6 times"
     );
 

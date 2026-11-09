@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use crate::ProgressBarManager;
 use crate::client::{ClientConfig, make_client};
 use crate::dlm_error::DlmError;
-use crate::file_link::FileLink;
+use crate::file_link::{FileLink, PART_SUFFIX};
 use crate::headers::{
     content_disposition_value, content_length_value, location_value, parse_filename_header,
     parse_metadata_from, supports_range_bytes,
@@ -77,18 +77,17 @@ impl<'a> DownloadContext<'a> {
         let head = self.client.head(url).send().await?;
         let head_status = head.status();
 
-        // HEAD outright rejected → derive the whole triple from a ranged GET.
-        if head_status == reqwest::StatusCode::METHOD_NOT_ALLOWED {
-            self.pb_manager.warn_above_progress_bars(&format!(
-                "HEAD returned 405 for {url}, falling back to GET for metadata"
-            ));
-            return self.metadata_from_probe(url).await;
-        }
-
+        // HEAD failed → derive the whole triple from a ranged GET. Not only
+        // for 405: presigned S3/GCS URLs are signed for GET and answer HEAD
+        // with 403, and some servers answer it 404 or 501. When the resource
+        // is really missing the GET fails too, and its status is the one
+        // reported - no warning is logged for a fallback that went nowhere.
         if !head_status.is_success() {
-            return Err(DlmError::ResponseStatusNotSuccess {
-                status_code: head_status.as_u16(),
-            });
+            let metadata = self.metadata_from_probe(url).await?;
+            self.pb_manager.warn_above_progress_bars(&format!(
+                "HEAD returned {head_status} for {url}, fell back to GET for metadata"
+            ));
+            return Ok(metadata);
         }
 
         // HEAD succeeded — the disposition filename is taken from it.
@@ -106,7 +105,7 @@ impl<'a> DownloadContext<'a> {
         Ok((length, supports_range, disposition))
     }
 
-    /// Full-triple fallback used when HEAD is outright rejected (405).
+    /// Full-triple fallback used when HEAD did not succeed.
     /// A failed probe is fatal here because we have no other source of metadata.
     async fn metadata_from_probe(
         &self,
@@ -200,11 +199,14 @@ impl<'a> DownloadContext<'a> {
 
         // setup progress bar for the file
         pb_dl.set_message(self.pb_manager.message_progress_bar(&filename));
-        if let Some(total_size) = content_length {
-            pb_dl.set_length(total_size);
+        // Unset an unknown length explicitly: the bar may carry the total of
+        // an earlier attempt, and indicatif's `reset` leaves the length alone.
+        match content_length {
+            Some(total_size) => pb_dl.set_length(total_size),
+            None => pb_dl.unset_length(),
         }
 
-        let tmp_name = output_dir.join(format!("{filename}.part"));
+        let tmp_name = output_dir.join(format!("{filename}{PART_SUFFIX}"));
         let resume_action = compute_resume_action(
             pb_dl,
             self.pb_manager,
