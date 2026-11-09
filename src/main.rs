@@ -212,13 +212,17 @@ async fn process_downloads(
                         // claim a progress bar for the upcoming download
                         let dl_pb = pbm.claim_progress_bar().await;
 
-                        // polite fixed-then-exponential retries for network errors
-                        let processed = with_retries(
-                            retry_strategy(retry),
-                            || ctx.download_link(&link, &dl_pb),
-                            |e: &DlmError| retry_handler(e, pbm, &link),
-                        )
-                        .await;
+                        // polite fixed-then-exponential retries for network errors,
+                        // raced against ctrl-c so a download sleeping through its
+                        // backoff (up to minutes) does not hold up the shutdown
+                        let processed = tokio::select! {
+                            () = token.cancelled() => Err(DlmError::ProgramInterrupted),
+                            res = with_retries(
+                                retry_strategy(retry),
+                                || ctx.download_link(&link, &dl_pb),
+                                |e: &DlmError| retry_handler(e, pbm, &link),
+                            ) => res,
+                        };
 
                         // reset & release progress bar
                         pbm.release_progress_bar(dl_pb).await;

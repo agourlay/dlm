@@ -144,6 +144,19 @@ async fn redirect_resolves_filename() {
 }
 
 #[tokio::test]
+async fn relative_redirect_resolves_filename() {
+    // `Location: /file/relative.bin` is relative; dlm must resolve it against
+    // the requested URL rather than fail to parse it.
+    let server = TestServer::start().await;
+    let url = server.url("/redirect-relative");
+
+    let (r, dir) = run_dlm(&[&url]).await;
+
+    assert_eq!(r.code, 0, "{r}");
+    assert_eq!(read(&dir.path().join("relative.bin")), FILE_BODY);
+}
+
+#[tokio::test]
 async fn content_disposition_supplies_filename() {
     // URL says "blob" (no extension). Server's Content-Disposition wins.
     let server = TestServer::start().await;
@@ -535,6 +548,87 @@ async fn interrupted_run_still_reports_what_was_done() {
         "the report should account for the finished download: {r}"
     );
     assert_eq!(read(&tmp.path().join("quick.bin")), FILE_BODY);
+}
+
+/// `ctrl-c` must not wait for a download sleeping through its retry backoff:
+/// the schedule grows to minutes, and the run would look frozen until the
+/// sleep ran out.
+#[cfg(unix)]
+#[tokio::test]
+async fn interrupt_during_retry_backoff_exits_promptly() {
+    let server = TestServer::start().await;
+    server.set_flaky_fails(100);
+    let url = server.url("/flaky");
+    let tmp = TempDir::new().unwrap();
+
+    let child = Command::new(env!("CARGO_BIN_EXE_dlm"))
+        .args([&url, "--retry", "20"])
+        .arg("-o")
+        .arg(tmp.path())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to spawn dlm");
+
+    // Each attempt is one failed HEAD. After the 6th, dlm sleeps 4s before
+    // the next one (500ms x3, 1s, 2s, then 4s).
+    for _ in 0..200 {
+        if server.flaky_remaining() <= 94 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        server.flaky_remaining() <= 94,
+        "dlm should have retried 6 times"
+    );
+
+    let pid = child.id().expect("dlm should still be running");
+    let interrupted_at = std::time::Instant::now();
+    let killed = Command::new("kill")
+        .args(["-INT", &pid.to_string()])
+        .status()
+        .await
+        .expect("failed to signal dlm");
+    assert!(killed.success(), "kill -INT should succeed");
+
+    let output = no_hang(child.wait_with_output())
+        .await
+        .expect("failed to wait for dlm");
+    let elapsed = interrupted_at.elapsed();
+    let r = DlmRun {
+        code: output.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+    };
+
+    assert!(
+        elapsed < Duration::from_secs(2),
+        "dlm took {elapsed:?} to stop, it waited out the retry backoff: {r}"
+    );
+    assert_ne!(r.code, 0, "an interrupted run should exit non-zero: {r}");
+    // cut short, not failed
+    assert!(
+        r.stdout.contains("0 completed, 0 skipped, 0 failed"),
+        "the interrupted download should not count as failed: {r}"
+    );
+}
+
+/// With stdout redirected the progress bars draw nowhere, and their logs used
+/// to vanish with them: the report said "1 failed" without saying which link
+/// or why.
+#[tokio::test]
+async fn logs_reach_a_redirected_stdout() {
+    let server = TestServer::start().await;
+    let url = server.url("/never-found");
+
+    let (r, _dir) = run_dlm(&[&url]).await;
+
+    assert_ne!(r.code, 0, "{r}");
+    assert!(
+        r.stdout.contains(&format!("Error for {url}")) && r.stdout.contains("404"),
+        "the failure should be logged on a redirected stdout: {r}"
+    );
 }
 
 /// `--no-color` must not change anything else about a run: the flag only

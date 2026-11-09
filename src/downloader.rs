@@ -383,7 +383,16 @@ impl<'a> DownloadContext<'a> {
             match location_value(head_result.headers()) {
                 None => Ok(None),
                 Some(location) => {
-                    let fl = FileLink::new(location)?;
+                    // `Location` may be relative (`/files/a.zip`), so it is
+                    // resolved against the URL that was requested.
+                    let target = reqwest::Url::parse(url)
+                        .and_then(|base| base.join(location))
+                        .map_err(|e| {
+                            DlmError::other(format!(
+                                "could not resolve redirect location '{location}' for {url}: {e}"
+                            ))
+                        })?;
+                    let fl = FileLink::new(target.as_str())?;
                     Ok(Some(fl))
                 }
             }

@@ -77,6 +77,7 @@ impl TestServer {
             .route("/zero-cl/{name}", any(zero_content_length_head))
             .route("/redirect/{name}", get(redirect_to_file))
             .route("/redirect-no-ext", get(redirect_no_ext))
+            .route("/redirect-relative", get(redirect_relative))
             .route("/disposition/{name}", get(content_disposition))
             .route("/auth/{name}", get(basic_auth_required))
             .route("/echo-headers", get(echo_headers))
@@ -115,6 +116,11 @@ impl TestServer {
     /// Make `/flaky` return 503 the next `n` times, then succeed.
     pub fn set_flaky_fails(&self, n: u32) {
         self.state.flaky_remaining.store(n, Ordering::SeqCst);
+    }
+
+    /// How many more 503s `/flaky` will send before it succeeds.
+    pub fn flaky_remaining(&self) -> u32 {
+        self.state.flaky_remaining.load(Ordering::SeqCst)
     }
 
     /// How many times `/ignore-range` served the body.
@@ -170,6 +176,12 @@ async fn redirect_to_file(Path(name): Path<String>, State(state): State<ServerSt
 /// derive the filename when the original URL had no extension.
 async fn redirect_no_ext(State(state): State<ServerState>) -> Response {
     redirect(&format!("{}/file/foo.bin", state.origin))
+}
+
+/// 302 with a relative `Location: /file/relative.bin`, which servers are
+/// allowed to send and dlm must resolve against the requested URL.
+async fn redirect_relative() -> Response {
+    redirect("/file/relative.bin")
 }
 
 /// Returns the body with `Content-Disposition: attachment; filename="<name>"`.

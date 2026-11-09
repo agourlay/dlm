@@ -227,7 +227,19 @@ impl ProgressBarManager {
     /// the left margin reads evenly down the log.
     fn log_at(&self, msg: impl std::fmt::Display) {
         let now = Zoned::now().strftime("%Y-%m-%d %H:%M:%S");
-        let _ = self.mp.println(format!("[{now}] {msg}"));
+        self.print_line(&format!("[{now}] {msg}"));
+    }
+
+    /// Print one line above the progress bars. When the bars draw nowhere -
+    /// stdout redirected to a file or piped into another command - indicatif
+    /// swallows `println`, so the line is written to stdout directly instead;
+    /// otherwise a redirected run would lose every log, failures included.
+    fn print_line(&self, line: &str) {
+        if self.mp.is_hidden() {
+            println!("{line}");
+        } else {
+            let _ = self.mp.println(line);
+        }
     }
 
     /// Ordinary progress: what was downloaded, skipped, or is starting.
@@ -250,18 +262,12 @@ impl ProgressBarManager {
     /// Print the end-of-run report, once the progress bars are finished.
     ///
     /// On a terminal it goes through the progress bars so that each line lands
-    /// on its own line instead of being appended to a finished bar. When the
-    /// bars draw nowhere - stdout redirected to a file or piped into another
-    /// command - indicatif would swallow the report, so it is written to
-    /// stdout directly. Unlike the running logs it carries no timestamp: it
-    /// describes the whole run, not a moment in it.
+    /// on its own line instead of being appended to a finished bar. Unlike the
+    /// running logs it carries no timestamp: it describes the whole run, not a
+    /// moment in it.
     pub fn print_report(&self, lines: &[String]) {
         for line in lines {
-            if self.mp.is_hidden() {
-                println!("{line}");
-            } else {
-                let _ = self.mp.println(line);
-            }
+            self.print_line(line);
         }
     }
 
