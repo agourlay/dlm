@@ -2,7 +2,9 @@ use crate::dlm_error::DlmError;
 use percent_encoding::percent_decode_str;
 
 /// Base names Windows reserves for legacy device files; we suffix `_` to dodge
-/// them. Matched case-insensitively.
+/// them. Matched case-insensitively against the part of the name before the
+/// first `.`, since Windows reserves them whatever the extension (`CON.txt`,
+/// `nul.tar.gz`).
 const FORBIDDEN_WINDOWS_NAMES: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
     "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
@@ -21,7 +23,7 @@ const MAX_FILENAME_BYTES: usize = 255;
 /// - Trims leading whitespace, but keeps leading dots so hidden files like
 ///   `.gitignore` survive.
 /// - Suffixes Windows reserved device names (CON, PRN, AUX, NUL, COM1-9,
-///   LPT1-9) with `_`.
+///   LPT1-9) with `_`, with or without an extension (`CON.txt` → `CON_.txt`).
 /// - Truncates to 255 bytes at a UTF-8 char boundary.
 ///
 /// Does not strip path components — callers handling header-supplied names
@@ -41,9 +43,15 @@ pub fn cleanup_filename(input: &str) -> String {
     let trimmed = trimmed_end.trim_start_matches(char::is_whitespace);
     result = trimmed.to_string();
 
-    let upper = result.to_ascii_uppercase();
-    if FORBIDDEN_WINDOWS_NAMES.iter().any(|&name| name == upper) {
-        result.push('_');
+    // Windows ignores trailing spaces before the extension, so `CON .txt` is
+    // reserved too - compare the stem with those trimmed.
+    let stem_end = result.find('.').unwrap_or(result.len());
+    let stem = result[..stem_end].trim_end();
+    if FORBIDDEN_WINDOWS_NAMES
+        .iter()
+        .any(|name| name.eq_ignore_ascii_case(stem))
+    {
+        result.insert(stem.len(), '_');
     }
 
     if result.len() > MAX_FILENAME_BYTES {
@@ -102,7 +110,7 @@ impl FileLink {
             (None, Some(q)) => percent_decode_str(q).decode_utf8_lossy().into_owned(),
             (None, None) => {
                 return Err(DlmError::other(format!(
-                    "FileLink cannot be built with an invalid extension '{trimmed}'"
+                    "FileLink could not derive a filename from '{trimmed}', it has neither a path nor a query"
                 )));
             }
         };
@@ -177,7 +185,7 @@ mod file_link_tests {
         match FileLink::new(url) {
             Err(DlmError::Other { message }) => assert_eq!(
                 message,
-                "FileLink cannot be built with an invalid extension 'https://www.google.com/area51/'".to_string()
+                "FileLink could not derive a filename from 'https://www.google.com/area51/', it has neither a path nor a query".to_string()
             ),
             other => panic!("expected error, got {other:?}"),
         }
@@ -265,8 +273,10 @@ mod file_link_tests {
         let url = "https://www.google.com/area51/alien-archive.tar.00";
         let fl = FileLink::new(url).unwrap();
         assert_eq!(fl.extension, Some("00".to_string()));
-        // TODO fix this - should be alien-archive.tar.00 or parts will collide on tmp file
+        // Only the last dot splits the extension, but `filename()` joins the
+        // two back, so each part keeps its own name and `.part` file.
         assert_eq!(fl.filename_without_extension, "alien-archive.tar");
+        assert_eq!(fl.filename(), "alien-archive.tar.00");
         assert_eq!(fl.url, url);
     }
 
@@ -308,7 +318,7 @@ mod file_link_tests {
         let url = "https://example.com/";
         match FileLink::new(url) {
             Err(DlmError::Other { message }) => assert!(
-                message.contains("invalid extension"),
+                message.contains("neither a path nor a query"),
                 "unexpected message: {message}"
             ),
             other => panic!("expected error, got {other:?}"),
@@ -368,6 +378,28 @@ mod file_link_tests {
         assert_eq!(cleanup_filename("nul"), "nul_");
         assert_eq!(cleanup_filename("LPT3"), "LPT3_");
         assert_eq!(cleanup_filename("aux"), "aux_");
+    }
+
+    #[test]
+    fn cleanup_escapes_windows_reserved_names_with_extension() {
+        assert_eq!(cleanup_filename("CON.txt"), "CON_.txt");
+        assert_eq!(cleanup_filename("nul.tar.gz"), "nul_.tar.gz");
+        assert_eq!(cleanup_filename("Com1.log"), "Com1_.log");
+        assert_eq!(cleanup_filename("CON .txt"), "CON_ .txt");
+    }
+
+    #[test]
+    fn cleanup_keeps_names_that_only_contain_a_reserved_word() {
+        assert_eq!(cleanup_filename("CONFIG.txt"), "CONFIG.txt");
+        assert_eq!(cleanup_filename("console.log"), "console.log");
+        assert_eq!(cleanup_filename("my.CON.txt"), "my.CON.txt");
+        assert_eq!(cleanup_filename(".nul"), ".nul");
+    }
+
+    #[test]
+    fn reserved_name_with_extension_from_url_is_escaped() {
+        let fl = FileLink::new("https://example.com/CON.txt").unwrap();
+        assert_eq!(fl.filename(), "CON_.txt");
     }
 
     #[test]
