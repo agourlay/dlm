@@ -14,3 +14,6 @@
 
 # vscode
 .vscode
+
+# Built landing page (site/build.sh)
+/_site

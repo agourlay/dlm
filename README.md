@@ -5,6 +5,10 @@
 
 A minimal HTTP download manager that works just fine.
 
+**[Website & demo →](https://agourlay.github.io/dlm/)**
+
+![demo](demo.gif "dlm downloading five GNU tarballs, three at a time: one skipped, one resumed")
+
 ## Features
 
 - read URLs from a text file
@@ -173,6 +177,22 @@ The downloads still in flight count as neither completed nor failed: their
 A run interrupted with `ctrl-c` also exits with a non-zero code.
 
 ## Installation
+
+### Install script
+
+On Linux or macOS, into `~/.local/bin`:
+
+```bash
+curl -fsSL https://agourlay.github.io/dlm/install.sh | sh
+```
+
+On Windows, with PowerShell, into `%LOCALAPPDATA%\Programs\dlm`:
+
+```powershell
+irm https://raw.githubusercontent.com/agourlay/dlm/master/site/install.ps1 | iex
+```
+
+Both download the latest release for your machine and can be read first: [install.sh](site/install.sh), [install.ps1](site/install.ps1).
 
 ### Releases
 

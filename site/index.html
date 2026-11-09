@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dlm: a minimal download manager</title>
+<meta name="description" content="A minimal command-line download manager: downloads a list of URLs concurrently, resumes interrupted downloads and retries failed ones.">
+<meta property="og:title" content="dlm: a minimal download manager">
+<meta property="og:description" content="Downloads a list of URLs concurrently, resumes interrupted downloads and retries failed ones.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://agourlay.github.io/dlm/">
+<meta property="og:image" content="https://agourlay.github.io/dlm/social.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="dlm downloading a list of links in a terminal, ending in Finished in 18s - 4 completed, 1 skipped, 0 failed">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M10 38v10a6 6 0 0 0 6 6h32a6 6 0 0 0 6-6V38' fill='none' stroke='%238b949e' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/><path d='M32 8v32M19 28l13 13 13-13' fill='none' stroke='%2339c5cf' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="hero">
+  <nav class="top">
+  <a class="pill sponsor" href="https://github.com/sponsors/agourlay">
+    <span class="heart" aria-hidden="true">♥</span>
+    <span>Sponsor</span>
+  </a>
+  <a class="pill gh" href="https://github.com/agourlay/dlm" aria-label="dlm on GitHub">
+    <svg viewBox="0 0 16 16" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>GitHub</span>
+    <span class="stars" hidden>★ <span class="stars-n"></span></span>
+  </a>
+  </nav>
+  <div class="hero-inner">
+  <div class="logo" aria-hidden="true">
+    <svg viewBox="0 0 64 64" width="62" height="62">
+      <path class="dl-tray" d="M10 38 V48 a6 6 0 0 0 6 6 H48 a6 6 0 0 0 6 -6 V38"/>
+      <path class="dl-arrow" d="M32 8 V40 M19 28 L32 41 L45 28"/>
+    </svg>
+  </div>
+  <h1><code>dlm</code>
+    <span class="genre">a minimal download manager</span></h1>
+  <p class="lede">Downloads a list of URLs concurrently. Resumes interrupted
+    downloads and retries failed ones.</p>
+  <!-- Without script both commands show, each under its own label; with it,
+       the labels become tabs and the visitor's own system is picked. -->
+  <div class="install" id="install">
+    <div class="install-tabs" role="tablist" hidden>
+      <button type="button" role="tab" data-os="unix">macOS · Linux</button>
+      <button type="button" role="tab" data-os="windows">Windows</button>
+    </div>
+    <div class="install-cmd" data-os="unix" role="tabpanel">
+      <p class="install-label">macOS · Linux</p>
+      <div class="install-line">
+        <code>curl -fsSL https://agourlay.github.io/dlm/install.sh | sh</code>
+        <button type="button" class="copy" hidden>Copy</button>
+      </div>
+      <p class="install-note">Installs <span class="ver"></span>to <code>~/.local/bin</code> ·
+        <a href="install.sh">Read the script</a></p>
+    </div>
+    <div class="install-cmd" data-os="windows" role="tabpanel">
+      <p class="install-label">Windows (PowerShell)</p>
+      <div class="install-line">
+        <code>irm https://raw.githubusercontent.com/agourlay/dlm/master/site/install.ps1 | iex</code>
+        <button type="button" class="copy" hidden>Copy</button>
+      </div>
+      <p class="install-note">Installs <span class="ver"></span>to <code>%LOCALAPPDATA%\Programs</code> and adds it to your PATH ·
+        <a href="install.ps1">Read the script</a></p>
+    </div>
+  </div>
+  <p class="alt">
+    Or with Rust: <code>cargo install dlm</code> ·
+    <a href="https://github.com/agourlay/dlm/releases">download a release</a>
+  </p>
+  <div class="term">
+    <div class="term-bar" aria-hidden="true">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="title">dlm</span>
+    </div>
+    <img src="demo.gif" width="1160" height="309"
+         alt="A terminal running dlm -i links.txt -m 3 on five GNU source tarballs: one is skipped as already downloaded, one resumes from a part file, three progress bars advance with live speed and ETA, and the run ends with Finished in 18s - 4 completed, 1 skipped, 0 failed" loading="eager">
+  </div>
+  </div>
+</header>
+
+<main>
+
+<section class="beats">
+  <div>
+    <h2>Concurrent</h2>
+    <p>Reads URLs from a file, one per line; blank lines and <code>#</code>
+    comments are ignored. Downloads up to <code>-m</code> at once (2 by
+    default), each with its own progress bar.</p>
+  </div>
+  <div>
+    <h2>Resumable</h2>
+    <p>Writes to a <code>.part</code> file until a download completes, and
+    continues from there on the next run using HTTP range requests.
+    Connection errors, timeouts, <code>429</code> and <code>5xx</code> are
+    retried with backoff, 10 times by default.</p>
+  </div>
+  <div>
+    <h2>Scriptable</h2>
+    <p>Skips files already in the output directory. Ends every run with a
+    summary of completed, skipped and failed downloads, and exits with
+    <code>1</code> if any failed.</p>
+  </div>
+</section>
+
+<section class="usage">
+  <h2>Usage</h2>
+  <div class="term">
+<pre class="term-body"><code><span class="cmt"># a single file</span>
+<span class="prompt">$</span> dlm https://example.com/file.iso
+
+<span class="cmt"># a list of URLs, 4 at a time, into a directory</span>
+<span class="prompt">$</span> dlm -i links.txt -m 4 -o ~/downloads
+
+<span class="cmt"># with a header, basic auth or a proxy</span>
+<span class="prompt">$</span> dlm -i links.txt -H 'Authorization: Bearer &lt;token&gt;'
+<span class="prompt">$</span> dlm -i links.txt --user alice:secret
+<span class="prompt">$</span> dlm -i links.txt --proxy http://proxy:3128
+
+<span class="cmt"># all options</span>
+<span class="prompt">$</span> dlm --help</code></pre>
+  </div>
+</section>
+
+<section class="details">
+  <h2>Details</h2>
+  <ul>
+    <li>File names come from the URL. When it has no extension, dlm asks the
+    server and uses the <code>Content-Disposition</code> header or the
+    redirect target.</li>
+    <li>A file is considered downloaded when a file with that name exists in
+    the output directory. Its size and content are not checked.</li>
+    <li>A <code>.part</code> file is resumed only when the server supports
+    range requests and reports a size. Otherwise the download starts
+    over.</li>
+    <li>A completed download is checked against the size the server
+    reports. One that is short is retried.</li>
+    <li>Ctrl-C stops the run and leaves unfinished downloads as
+    <code>.part</code> files. A second Ctrl-C exits immediately.</li>
+  </ul>
+</section>
+
+</main>
+
+<footer>
+  <p>
+    <a href="https://github.com/agourlay/dlm">GitHub</a> ·
+    <a href="https://crates.io/crates/dlm">crates.io</a> ·
+    <a href="https://github.com/agourlay/dlm/releases">Releases</a> ·
+    <a href="https://github.com/agourlay/dlm/blob/master/LICENSE">Apache-2.0</a>
+  </p>
+</footer>
+
+<script>
+// Turn the two install commands into tabs, opened on the visitor's system,
+// and give each a copy button. Without this the page still shows both.
+(function () {
+  var box = document.querySelector(".install");
+  var tabs = box.querySelectorAll("[role=tab]");
+  var panels = box.querySelectorAll(".install-cmd");
+  function show(os) {
+    tabs.forEach(function (t) { t.setAttribute("aria-selected", t.dataset.os === os); });
+    panels.forEach(function (p) { p.hidden = p.dataset.os !== os; });
+  }
+  tabs.forEach(function (t) { t.onclick = function () { show(t.dataset.os); }; });
+  box.querySelector(".install-tabs").hidden = false;
+  box.classList.add("tabbed");
+  var ua = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.userAgent;
+  show(/^win|windows/i.test(ua) ? "windows" : "unix");
+
+  if (!navigator.clipboard) return;
+  box.querySelectorAll(".copy").forEach(function (b) {
+    b.hidden = false;
+    b.onclick = function () {
+      navigator.clipboard.writeText(b.previousElementSibling.textContent).then(function () {
+        b.textContent = "Copied";
+        setTimeout(function () { b.textContent = "Copy"; }, 1600);
+      });
+    };
+  });
+})();
+
+// The version the install commands fetch, named in each install note with its
+// release date on hover. Silent when GitHub does not answer, like the star
+// count below.
+fetch("https://api.github.com/repos/agourlay/dlm/releases/latest")
+  .then(function (r) { return r.ok ? r.json() : null; })
+  .then(function (rel) {
+    if (!rel || !rel.tag_name || !rel.published_at) return;
+    var when = new Date(rel.published_at).toLocaleDateString("en-GB",
+      { day: "numeric", month: "long", year: "numeric" });
+    document.querySelectorAll(".install-note .ver").forEach(function (v) {
+      v.textContent = rel.tag_name + " ";
+      v.title = "Released " + when;
+    });
+  })
+  .catch(function () {});
+
+// The star count, filled in when GitHub answers; the link stands on its own
+// when it does not.
+fetch("https://api.github.com/repos/agourlay/dlm")
+  .then(function (r) { return r.ok ? r.json() : null; })
+  .then(function (repo) {
+    if (!repo || typeof repo.stargazers_count !== "number") return;
+    document.querySelector(".gh .stars-n").textContent = repo.stargazers_count;
+    document.querySelector(".gh .stars").hidden = false;
+  })
+  .catch(function () {});
+</script>
+
+</body>
+</html>

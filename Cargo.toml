@@ -8,6 +8,8 @@ license = "Apache-2.0"
 readme = "README.md"
 categories = ["command-line-utilities"]
 keywords = ["http", "download", "download-manager"]
+# the landing page and its capture are for GitHub, not for the crate
+exclude = ["demo.gif", "site/"]
 edition = "2024"
 
 [dependencies]
