@@ -75,6 +75,9 @@ impl TestServer {
             .route("/no-range/{name}", get(serve_no_range))
             .route("/reject-head/{name}", any(reject_head_get_works))
             .route("/forbid-head/{name}", any(forbid_head_get_works))
+            .route("/unknown-total/{name}", any(unknown_total))
+            .route("/chunked-ranges/{name}", get(chunked_ranges))
+            .route("/disposition-semicolon", get(content_disposition_semicolon))
             .route("/zero-cl/{name}", any(zero_content_length_head))
             .route("/redirect/{name}", get(redirect_to_file))
             .route("/redirect-no-ext", get(redirect_no_ext))
@@ -156,6 +159,46 @@ async fn forbid_head_get_works(
     serve_with_range(FILE_BODY, &headers, true)
 }
 
+/// HEAD is rejected, and the range probe answers `Content-Range: bytes 0-0/*`
+/// - the server does not know the total. A plain GET streams the whole body.
+async fn unknown_total(method: Method, _path: Path<String>, headers: HeaderMap) -> Response {
+    if method == Method::HEAD {
+        return StatusCode::METHOD_NOT_ALLOWED.into_response();
+    }
+    if headers.contains_key(RANGE) {
+        let mut resp = Response::new(Body::from(&FILE_BODY[..1]));
+        *resp.status_mut() = StatusCode::PARTIAL_CONTENT;
+        let h = resp.headers_mut();
+        h.insert(CONTENT_LENGTH, HeaderValue::from_static("1"));
+        h.insert(CONTENT_RANGE, HeaderValue::from_static("bytes 0-0/*"));
+        return resp;
+    }
+    streamed_body()
+}
+
+/// A server that streams its responses chunked - no `Content-Length` on the
+/// full body, nor on HEAD - and serves ranges without ever advertising
+/// `Accept-Ranges`. Only a range probe reveals the size and range support.
+async fn chunked_ranges(Path(_name): Path<String>, headers: HeaderMap) -> Response {
+    if headers.contains_key(RANGE) {
+        let mut resp = serve_with_range(FILE_BODY, &headers, true);
+        resp.headers_mut().remove(ACCEPT_RANGES);
+        return resp;
+    }
+    streamed_body()
+}
+
+/// The whole body as a stream of unknown size, so no `Content-Length`.
+fn streamed_body() -> Response {
+    let stream = futures_util::stream::iter(
+        FILE_BODY
+            .chunks(8 * 1024)
+            .map(|c| Ok::<Vec<u8>, std::io::Error>(c.to_vec()))
+            .collect::<Vec<_>>(),
+    );
+    Response::new(Body::from_stream(stream))
+}
+
 async fn reject_head_get_works(
     method: Method,
     Path(_name): Path<String>,
@@ -204,6 +247,17 @@ async fn content_disposition(Path(name): Path<String>, headers: HeaderMap) -> Re
     resp.headers_mut().insert(
         CONTENT_DISPOSITION,
         HeaderValue::from_str(&format!("attachment; filename=\"{name}\"")).unwrap(),
+    );
+    resp
+}
+
+/// The URL carries no extension, so dlm must take the name from the header,
+/// whose quoted value holds a `;`.
+async fn content_disposition_semicolon(headers: HeaderMap) -> Response {
+    let mut resp = serve_with_range(FILE_BODY, &headers, true);
+    resp.headers_mut().insert(
+        CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"a;b.bin\"; size=65536"),
     );
     resp
 }

@@ -146,6 +146,56 @@ async fn long_filename_is_truncated_so_its_part_file_fits() {
     assert_eq!(read(&dir.path().join(expected)), FILE_BODY);
 }
 
+/// A probe answered `Content-Range: bytes 0-0/*` leaves the size unknown; it
+/// used to be read from the 1-byte `Content-Length` of the slice, failing the
+/// download as incomplete.
+#[tokio::test]
+async fn unknown_total_in_content_range_does_not_fail_the_download() {
+    let server = TestServer::start().await;
+    let url = server.url("/unknown-total/stream.bin");
+
+    let (r, dir) = run_dlm(&[&url, "--retry", "0"]).await;
+
+    assert_eq!(r.code, 0, "{r}");
+    assert_eq!(read(&dir.path().join("stream.bin")), FILE_BODY);
+}
+
+/// HEAD without `Content-Length` and no `Accept-Ranges` anywhere: the range
+/// probe still finds the size and the range support, so a `.part` resumes
+/// instead of being thrown away.
+#[tokio::test]
+async fn chunked_server_without_accept_ranges_still_resumes() {
+    let server = TestServer::start().await;
+    let url = server.url("/chunked-ranges/chunked.bin");
+    let tmp = TempDir::new().unwrap();
+    std::fs::write(
+        tmp.path().join("chunked.bin.part"),
+        &FILE_BODY[..FILE_BODY.len() / 2],
+    )
+    .unwrap();
+
+    let r = run_dlm_in(&[&url], tmp.path()).await;
+
+    assert_eq!(r.code, 0, "{r}");
+    assert_eq!(read(&tmp.path().join("chunked.bin")), FILE_BODY);
+    assert!(
+        r.stdout.contains("Downloaded 32.00KiB"),
+        "only the missing half should have been fetched: {r}"
+    );
+}
+
+/// A quoted Content-Disposition name holding a `;` used to be cut at it.
+#[tokio::test]
+async fn disposition_with_semicolon_in_quotes_is_kept_whole() {
+    let server = TestServer::start().await;
+    let url = server.url("/disposition-semicolon");
+
+    let (r, dir) = run_dlm(&[&url]).await;
+
+    assert_eq!(r.code, 0, "{r}");
+    assert_eq!(read(&dir.path().join("a;b.bin")), FILE_BODY);
+}
+
 #[tokio::test]
 async fn head_zero_content_length_falls_back_to_get_probe() {
     let server = TestServer::start().await;

@@ -93,13 +93,13 @@ impl<'a> DownloadContext<'a> {
         // HEAD succeeded — the disposition filename is taken from it.
         let disposition = content_disposition_value(head.headers()).and_then(parse_filename_header);
 
-        // For length + range support: probe with a ranged GET when HEAD claims
-        // `Content-Length: 0` (a sign HEAD is faked); trust HEAD when it
-        // reports a real length; give up when no header is present.
+        // For length + range support: trust HEAD when it reports a real
+        // length. Otherwise probe with a ranged GET - `Content-Length: 0` is a
+        // sign HEAD is faked, and a missing one (chunked responses) does not
+        // mean the server cannot tell the size of a range or serve one.
         let (length, supports_range) = match content_length_value(head.headers()) {
-            Some(0) => self.length_and_range_from_probe(url).await?,
-            Some(n) => (Some(n), supports_range_bytes(head.headers())),
-            None => (None, false),
+            Some(n) if n > 0 => (Some(n), supports_range_bytes(head.headers())),
+            _ => self.length_and_range_from_probe(url).await?,
         };
 
         Ok((length, supports_range, disposition))
@@ -117,11 +117,11 @@ impl<'a> DownloadContext<'a> {
                 status_code: probe.status().as_u16(),
             });
         }
-        Ok(parse_metadata_from(probe.headers()))
+        Ok(parse_metadata_from(probe.status(), probe.headers()))
     }
 
     /// Length + range-support fallback used when HEAD succeeded but reported
-    /// `Content-Length: 0`. A failed probe is recoverable: log it and give up
+    /// no `Content-Length`, or `Content-Length: 0`. A failed probe is recoverable: log it and give up
     /// on length/range, keeping the disposition filename from HEAD.
     async fn length_and_range_from_probe(
         &self,
@@ -135,7 +135,7 @@ impl<'a> DownloadContext<'a> {
             ));
             return Ok((None, false));
         }
-        let (length, supports_range, _) = parse_metadata_from(probe.headers());
+        let (length, supports_range, _) = parse_metadata_from(probe.status(), probe.headers());
         Ok((length, supports_range))
     }
 
