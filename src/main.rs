@@ -18,6 +18,7 @@ use crate::downloader::{DownloadContext, DownloadOutcome};
 use crate::progress_bar_manager::ProgressBarManager;
 use crate::retry::{retry_handler, retry_strategy, with_retries};
 use crate::stats::RunStats;
+use crate::user_agents::UserAgent;
 use futures_util::stream::StreamExt;
 use std::pin::Pin;
 use tokio::io::AsyncBufReadExt;
@@ -89,8 +90,10 @@ async fn main_result() -> Result<(), DlmError> {
     let stream = build_url_stream(input, pbm, max_concurrent_downloads, nb_of_lines).await?;
 
     let token = &token;
+    // drawn once: both HTTP clients must send the same random agent
+    let user_agent = user_agent.map(UserAgent::into_header_value);
     let client_config = ClientConfig {
-        user_agent: user_agent.as_ref(),
+        user_agent: user_agent.as_deref(),
         proxy: proxy.as_deref(),
         connection_timeout_secs,
         read_timeout_secs,

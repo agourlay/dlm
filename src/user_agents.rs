@@ -25,6 +25,17 @@ pub enum UserAgent {
     RandomUserAgent,
 }
 
+impl UserAgent {
+    /// The header value to send. A random agent is drawn once here, so every
+    /// request of the run carries the same one.
+    pub fn into_header_value(self) -> String {
+        match self {
+            Self::CustomUserAgent(ua) => ua,
+            Self::RandomUserAgent => random_user_agent().to_string(),
+        }
+    }
+}
+
 pub fn random_user_agent() -> &'static str {
     // safe unwrap because the array is not empty
     USER_AGENTS.choose(&mut rand::rng()).unwrap()

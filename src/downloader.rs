@@ -342,19 +342,12 @@ impl<'a> DownloadContext<'a> {
         file_link: &mut FileLink,
         disposition_filename: Option<String>,
     ) -> Result<(), DlmError> {
-        // try to get the file name from the Content-Disposition header
+        // The Content-Disposition name is the server's own word on what the
+        // file is called, so it is used as is - extension or not (`README`).
         if let Some(fh) = disposition_filename {
             let (ext, filename) = FileLink::extract_extension_from_filename(&fh);
-            if ext.is_some() {
-                file_link.extension = ext;
-                file_link.filename_without_extension = filename;
-                return Ok(());
-            }
-            let msg = format!(
-                "Could not determine file extension based on header {filename} for {}",
-                file_link.url
-            );
-            self.pb_manager.warn_above_progress_bars(&msg);
+            file_link.extension = ext;
+            file_link.filename_without_extension = filename;
             return Ok(());
         }
 

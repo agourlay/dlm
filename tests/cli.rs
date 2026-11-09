@@ -246,6 +246,48 @@ async fn content_disposition_supplies_filename() {
 }
 
 #[tokio::test]
+async fn content_disposition_without_extension_is_used() {
+    // The server names the file `README`; that name wins over the URL's.
+    let server = TestServer::start().await;
+    let url = server.url("/disposition-bare");
+
+    let (r, dir) = run_dlm(&[&url]).await;
+
+    assert_eq!(r.code, 0, "{r}");
+    assert_eq!(read(&dir.path().join("README")), FILE_BODY);
+    assert!(!dir.path().join("disposition-bare").exists());
+}
+
+/// `get.php?id=1` and `get.php?id=2` are two files. The `.php` names the
+/// page, so neither may be skipped as "already there" on the strength of the
+/// URL alone, and the server's names are used.
+#[tokio::test]
+async fn script_page_links_are_named_by_the_server() {
+    let server = TestServer::start().await;
+    let tmp = TempDir::new().unwrap();
+    let input = tmp.path().join("links.txt");
+    std::fs::write(
+        &input,
+        format!(
+            "{}\n{}\n",
+            server.url("/get.php?id=1"),
+            server.url("/get.php?id=2"),
+        ),
+    )
+    .unwrap();
+
+    let r = run_dlm_in(&["-i", input.to_str().unwrap(), "-m", "1"], tmp.path()).await;
+
+    assert_eq!(r.code, 0, "{r}");
+    assert_eq!(read(&tmp.path().join("file-1.bin")), FILE_BODY);
+    assert_eq!(read(&tmp.path().join("file-2.bin")), FILE_BODY);
+    assert!(
+        r.stdout.contains("2 completed, 0 skipped, 0 failed"),
+        "neither link should be skipped: {r}"
+    );
+}
+
+#[tokio::test]
 async fn basic_auth_succeeds() {
     let server = TestServer::start().await;
     let url = server.url("/auth/secret.bin");
@@ -399,6 +441,19 @@ async fn random_user_agent_reaches_server() {
     assert!(
         ua.starts_with("Mozilla/5.0"),
         "expected a browser UA, got '{ua}'"
+    );
+
+    // The URL has no extension and no Content-Disposition, so both HTTP
+    // clients hit it (HEAD, redirect-check HEAD, GET). One random agent is
+    // drawn per run, not one per client.
+    let seen = server.echo_user_agents();
+    assert!(
+        seen.len() >= 3,
+        "expected both clients to be used: {seen:?}"
+    );
+    assert!(
+        seen.iter().all(|s| *s == seen[0]),
+        "every request of a run should carry the same agent: {seen:?}"
     );
 }
 

@@ -10,6 +10,20 @@ const FORBIDDEN_WINDOWS_NAMES: &[&str] = &[
     "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
+/// Extensions of server-side scripts. A URL ending in one names the page that
+/// produces the download (`get.php?id=1`), not the file itself, so it is not
+/// trusted as a file name: dlm asks the server for the real one, and keeps
+/// the query in the fallback name so `?id=1` and `?id=2` do not collide.
+const PAGE_EXTENSIONS: &[&str] = &["php", "asp", "aspx", "jsp", "jspx", "cgi", "pl", "cfm"];
+
+/// Whether `name` ends in an extension that identifies a file - not a
+/// server-side script, see [`PAGE_EXTENSIONS`].
+fn has_file_extension(name: &str) -> bool {
+    name.rsplit_once('.').is_some_and(|(_, ext)| {
+        !ext.is_empty() && !PAGE_EXTENSIONS.iter().any(|p| p.eq_ignore_ascii_case(ext))
+    })
+}
+
 /// Suffix of the file a download is written to until it completes.
 pub const PART_SUFFIX: &str = ".part";
 
@@ -125,19 +139,24 @@ impl FileLink {
             .filter(|s| !s.is_empty())
             .map(|s| percent_decode_str(s).decode_utf8_lossy().into_owned());
         let query = parsed.query().filter(|q| !q.is_empty());
-        // When the path yields a name with an extension we drop the query —
-        // it's noise that doesn't help disambiguate. When the path has no
-        // extension (or no segment at all), keep the query so URLs that
-        // differ only in their parameters don't collide on the same
-        // placeholder filename. The real name still gets overridden later by
-        // Content-Disposition or the redirect target when those are present.
-        let raw_name = match (path_part, query) {
-            (Some(p), Some(q)) if !p.contains('.') => {
+        // When the path yields a name with a file extension we drop the
+        // query — it's noise that doesn't help disambiguate. Otherwise (no
+        // extension, a script page like `get.php`, or no segment at all) the
+        // name is only a placeholder: it carries no extension, so the real one
+        // is asked from the server (Content-Disposition, redirect target), and
+        // it keeps the query so URLs that differ only in their parameters
+        // don't collide on the same placeholder filename.
+        let (raw_name, known_extension) = match (path_part, query) {
+            (Some(p), _) if has_file_extension(&p) => (p, true),
+            (Some(p), Some(q)) => {
                 let q_decoded = percent_decode_str(q).decode_utf8_lossy();
-                format!("{p}?{q_decoded}")
+                (format!("{p}?{q_decoded}"), false)
             }
-            (Some(p), _) => p,
-            (None, Some(q)) => percent_decode_str(q).decode_utf8_lossy().into_owned(),
+            (Some(p), None) => (p, false),
+            (None, Some(q)) => (
+                percent_decode_str(q).decode_utf8_lossy().into_owned(),
+                false,
+            ),
             (None, None) => {
                 return Err(DlmError::other(format!(
                     "FileLink could not derive a filename from '{trimmed}', it has neither a path nor a query"
@@ -150,8 +169,13 @@ impl FileLink {
             return Err(DlmError::other(message));
         }
 
-        let (extension, filename_without_extension) =
-            Self::extract_extension_from_filename(&safe_name);
+        // a placeholder name may hold dots (`get.php`, `?v=1.2`) that are no
+        // extension, so it is not split
+        let (extension, filename_without_extension) = if known_extension {
+            Self::extract_extension_from_filename(&safe_name)
+        } else {
+            (None, safe_name)
+        };
 
         Ok(Self {
             url: url.to_string(),
@@ -259,6 +283,30 @@ mod file_link_tests {
             fl2.filename(),
             "URLs differing only in query params must not collide on the placeholder filename"
         );
+    }
+
+    /// A script page names the producer of the download, not the file, so
+    /// URLs differing only in their query must not collide, and the name is
+    /// a placeholder the server's Content-Disposition can replace.
+    #[test]
+    fn script_page_urls_keep_their_query_and_no_extension() {
+        let fl1 = FileLink::new("https://example.com/get.php?id=1").unwrap();
+        let fl2 = FileLink::new("https://example.com/get.php?id=2").unwrap();
+        assert_eq!(fl1.extension, None);
+        assert_eq!(fl1.filename(), "get.php_id=1");
+        assert_ne!(fl1.filename(), fl2.filename());
+
+        let fl = FileLink::new("https://example.com/download.ASPX").unwrap();
+        assert_eq!(fl.extension, None);
+        assert_eq!(fl.filename(), "download.ASPX");
+    }
+
+    /// Dots in the query of a placeholder name are not an extension.
+    #[test]
+    fn dots_in_a_placeholder_query_are_not_an_extension() {
+        let fl = FileLink::new("https://example.com/latest?version=1.2").unwrap();
+        assert_eq!(fl.extension, None);
+        assert_eq!(fl.filename(), "latest_version=1.2");
     }
 
     #[test]

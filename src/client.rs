@@ -1,5 +1,4 @@
 use crate::dlm_error::DlmError;
-use crate::user_agents::{UserAgent, random_user_agent};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
@@ -13,7 +12,8 @@ use std::time::Duration;
 const DEFAULT_USER_AGENT: &str = concat!("dlm/", env!("CARGO_PKG_VERSION"));
 
 pub struct ClientConfig<'a> {
-    pub user_agent: Option<&'a UserAgent>,
+    /// Resolved once per run, see [`crate::user_agents::UserAgent::into_header_value`].
+    pub user_agent: Option<&'a str>,
     pub proxy: Option<&'a str>,
     pub connection_timeout_secs: u32,
     pub read_timeout_secs: u32,
@@ -41,11 +41,7 @@ pub fn make_client(config: &ClientConfig<'_>, redirect: bool) -> Result<Client, 
         client_builder.read_timeout(Duration::from_secs(u64::from(config.read_timeout_secs)))
     };
 
-    let client_builder = match config.user_agent {
-        Some(UserAgent::CustomUserAgent(ua)) => client_builder.user_agent(ua),
-        Some(UserAgent::RandomUserAgent) => client_builder.user_agent(random_user_agent()),
-        None => client_builder.user_agent(DEFAULT_USER_AGENT),
-    };
+    let client_builder = client_builder.user_agent(config.user_agent.unwrap_or(DEFAULT_USER_AGENT));
 
     let client_builder = match config.proxy {
         Some(p) => client_builder.proxy(Proxy::all(p)?),

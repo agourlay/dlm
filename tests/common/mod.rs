@@ -8,7 +8,7 @@
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::{OriginalUri, Path, State};
+use axum::extract::{OriginalUri, Path, Query, State};
 use axum::http::header::{
     ACCEPT_RANGES, AUTHORIZATION, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_RANGE, LOCATION,
     RANGE,
@@ -16,6 +16,7 @@ use axum::http::header::{
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -46,6 +47,8 @@ struct ServerState {
     /// what dlm actually sent. `std::sync::Mutex` is fine here — the lock is
     /// never held across an `.await`.
     last_echo_headers: Arc<Mutex<Option<HeaderMap>>>,
+    /// Every User-Agent seen by `/echo-headers`, in arrival order.
+    echo_user_agents: Arc<Mutex<Vec<String>>>,
     /// Number of GETs served by `/ignore-range`, so a test can assert the
     /// body was fetched once rather than downloaded twice.
     ignore_range_gets: Arc<AtomicU32>,
@@ -66,6 +69,7 @@ impl TestServer {
         let state = ServerState {
             flaky_remaining: Arc::new(AtomicU32::new(0)),
             last_echo_headers: Arc::new(Mutex::new(None)),
+            echo_user_agents: Arc::new(Mutex::new(Vec::new())),
             ignore_range_gets: Arc::new(AtomicU32::new(0)),
             origin: Arc::from(format!("http://{addr}")),
         };
@@ -78,6 +82,8 @@ impl TestServer {
             .route("/unknown-total/{name}", any(unknown_total))
             .route("/chunked-ranges/{name}", get(chunked_ranges))
             .route("/disposition-semicolon", get(content_disposition_semicolon))
+            .route("/disposition-bare", get(content_disposition_bare))
+            .route("/get.php", get(script_page))
             .route("/zero-cl/{name}", any(zero_content_length_head))
             .route("/redirect/{name}", get(redirect_to_file))
             .route("/redirect-no-ext", get(redirect_no_ext))
@@ -120,6 +126,11 @@ impl TestServer {
     /// Make `/flaky` return 503 the next `n` times, then succeed.
     pub fn set_flaky_fails(&self, n: u32) {
         self.state.flaky_remaining.store(n, Ordering::SeqCst);
+    }
+
+    /// Every User-Agent `/echo-headers` received, in order.
+    pub fn echo_user_agents(&self) -> Vec<String> {
+        self.state.echo_user_agents.lock().unwrap().clone()
     }
 
     /// How many more 503s `/flaky` will send before it succeeds.
@@ -262,6 +273,28 @@ async fn content_disposition_semicolon(headers: HeaderMap) -> Response {
     resp
 }
 
+/// Content-Disposition naming a file without an extension.
+async fn content_disposition_bare(headers: HeaderMap) -> Response {
+    let mut resp = serve_with_range(FILE_BODY, &headers, true);
+    resp.headers_mut().insert(
+        CONTENT_DISPOSITION,
+        HeaderValue::from_static("attachment; filename=\"README\""),
+    );
+    resp
+}
+
+/// A script page serving a different file per `id`, named by
+/// Content-Disposition: `/get.php?id=7` is `file-7.bin`.
+async fn script_page(Query(q): Query<HashMap<String, String>>, headers: HeaderMap) -> Response {
+    let id = q.get("id").cloned().unwrap_or_default();
+    let mut resp = serve_with_range(FILE_BODY, &headers, true);
+    resp.headers_mut().insert(
+        CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"file-{id}.bin\"")).unwrap(),
+    );
+    resp
+}
+
 /// Requires Basic auth `alice:s3cret`. 401 otherwise.
 async fn basic_auth_required(Path(_name): Path<String>, headers: HeaderMap) -> Response {
     let expected = "Basic YWxpY2U6czNjcmV0"; // base64 of "alice:s3cret"
@@ -275,6 +308,9 @@ async fn basic_auth_required(Path(_name): Path<String>, headers: HeaderMap) -> R
 /// returns a small body so the download succeeds.
 async fn echo_headers(State(state): State<ServerState>, headers: HeaderMap) -> Response {
     *state.last_echo_headers.lock().unwrap() = Some(headers.clone());
+    if let Some(ua) = headers.get("user-agent").and_then(|v| v.to_str().ok()) {
+        state.echo_user_agents.lock().unwrap().push(ua.to_owned());
+    }
     serve_with_range(b"echoed", &headers, false)
 }
 

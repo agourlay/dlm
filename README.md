@@ -107,6 +107,11 @@ skipped without contacting the server at all. Otherwise `dlm` sends a `HEAD`
 request first and takes the name from the `Content-Disposition` header, or from
 the target of a redirect.
 
+A link ending in a server-side script (`.php`, `.asp`, `.aspx`, `.jsp`, `.cgi`,
+`.pl`, `.cfm`) names the page producing the download rather than the file, so it
+is treated like a link without an extension. When the server gives no name, the
+query is kept in it: `get.php?id=1` and `get.php?id=2` land in different files.
+
 Links ending in the same file name therefore map to the same file on disk, even
 when they point at different content. Reached one after another, the first
 downloads and the rest are reported as already completed. Reached at the same
