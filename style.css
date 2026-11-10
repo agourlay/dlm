@@ -1,0 +1,463 @@
+/* A GitHub-dark terminal palette shared with the author's other tool pages,
+   with a cyan accent of its own: the colour dlm draws its download bars in.
+   Every colour on the page is one of these, so the light set below is the
+   whole of light mode. */
+:root {
+  color-scheme: dark light;
+  --bg: #0d1117;
+  --bg-lift: #161b22;
+  --bg-deep: #010409;
+  --text: #e6edf3;
+  --text-soft: #8b949e;
+  --accent: #39c5cf;
+  --accent-dark: #1b7c83;
+  --accent-glow: rgba(57, 197, 207, 0.45);
+  --link: #58a6ff;
+  --line: rgba(255, 255, 255, 0.1);
+  --dots: rgba(255, 255, 255, 0.05);
+  /* Raised surfaces: pills, cards. */
+  --card: rgba(255, 255, 255, 0.04);
+  --card-hover: rgba(255, 255, 255, 0.08);
+  /* The terminal window and install lines stay dark in both themes, matching
+     the capture, whose own background is this same colour. */
+  --term: #0d1117;
+  --term-bar: #161b22;
+  --term-ink: #e6edf3;
+  --shadow: rgba(1, 4, 9, 0.6);
+  --wrap: 1000px;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --bg-lift: #f6f8fa;
+    --bg-deep: #f6f8fa;
+    --text: #1f2328;
+    --text-soft: #59636e;
+    --accent: #1b7c83;
+    --accent-dark: #136065;
+    --accent-glow: rgba(27, 124, 131, 0.45);
+    --link: #0969da;
+    --line: rgba(0, 0, 0, 0.11);
+    --dots: rgba(0, 0, 0, 0.05);
+    --card: rgba(0, 0, 0, 0.03);
+    --card-hover: rgba(0, 0, 0, 0.06);
+    --shadow: rgba(31, 35, 40, 0.15);
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+}
+
+h1, h2 { line-height: 1.15; letter-spacing: -0.02em; }
+
+a { color: var(--link); text-underline-offset: 2px; transition: color 0.15s ease; }
+a:hover { color: var(--accent); }
+
+img { display: block; width: 100%; height: auto; }
+
+/* A single visible keyboard-focus ring in the accent colour, on anything
+   interactive. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Honour a request for less motion: keep the colour changes, drop the moves. */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  .pill:hover, .beats > div:hover { transform: none; }
+}
+
+/* ---- hero ---- */
+
+.hero {
+  position: relative;
+  padding: 56px 24px 0;
+  text-align: center;
+  /* A soft cyan halo at the top - the colour of a download bar - over the
+     surface gradient, so the headline sits in a pool of brand light. */
+  background:
+    radial-gradient(1100px 420px at 50% -8%, rgba(57, 197, 207, 0.13), transparent 60%),
+    linear-gradient(180deg, var(--bg-lift) 0%, var(--bg) 62%);
+  overflow: hidden;
+}
+
+/* A faint field of dots behind the headline. Decoration only, so it sits
+   under everything and takes no clicks. */
+.hero::before {
+  content: "";
+  position: absolute;
+  top: 54px;
+  left: 0;
+  right: 0;
+  height: 150px;
+  pointer-events: none;
+  background-image: radial-gradient(var(--dots) 1.4px, transparent 1.6px);
+  background-size: 14px 14px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent);
+}
+
+.hero-inner { position: relative; max-width: var(--wrap); margin: 0 auto; }
+
+/* The mark: a cyan arrow coming down into a tray. Drawn once here and,
+   bolder, as the favicon. A soft cyan halo lifts it off the hero. */
+.logo { display: flex; justify-content: center; margin: 0 0 14px; }
+.logo svg { filter: drop-shadow(0 4px 14px rgba(57, 197, 207, 0.35)); }
+.logo .dl-tray { fill: none; stroke: var(--text); stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
+.logo .dl-arrow { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The links pinned to the corner: sponsoring, and the repository with its
+   star count. */
+.top {
+  position: absolute;
+  z-index: 1;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  gap: 8px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.pill:hover { background: var(--card-hover); border-color: var(--text-soft); transform: translateY(-1px); }
+.sponsor .heart { color: #db61a2; }
+.gh .stars { padding-left: 8px; border-left: 1px solid var(--line); color: var(--text-soft); }
+.gh .stars[hidden] { display: none; }
+
+/* The name and what it is are the headline: a reader who takes in one line of
+   this page should come away knowing both. */
+.hero h1 {
+  margin: 0 0 16px;
+  font-size: clamp(2.2rem, 6vw, 3.8rem);
+  font-weight: 800;
+}
+
+.hero h1 code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  letter-spacing: -0.03em;
+  background: none;
+  padding: 0;
+}
+
+.hero h1 .genre {
+  display: block;
+  margin-top: 12px;
+  font-size: clamp(1.1rem, 3vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+.hero h1::after {
+  content: "";
+  display: block;
+  width: 56px;
+  height: 3px;
+  margin: 20px auto 0;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.lede {
+  margin: 0 auto 30px;
+  max-width: 58ch;
+  font-size: 1rem;
+  color: var(--text-soft);
+}
+
+/* ---- terminal window around the capture ---- */
+
+.term {
+  max-width: 1000px;
+  margin: 8px auto 0;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--term);
+  /* A deep drop shadow plus a faint cyan aura, tying the capture to the
+     accent without a hard outline. */
+  box-shadow: 0 24px 60px -12px var(--shadow),
+              0 0 70px -30px rgba(57, 197, 207, 0.5);
+  overflow: hidden;
+  text-align: left;
+}
+
+.term-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  background: var(--term-bar);
+  border-bottom: 1px solid var(--line);
+}
+
+.term-bar .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.term-bar .r { background: #ff5f56; }
+.term-bar .y { background: #ffbd2e; }
+.term-bar .g { background: #27c93f; }
+
+.term-bar .title {
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.term img { display: block; width: 100%; height: auto; }
+
+/* A static capture written as text rather than an image: crisp at any size,
+   searchable, and selectable. Too wide for a phone, so it scrolls sideways
+   inside its window rather than wrapping out of shape. The terminal stays
+   dark in both themes, so its colours are fixed rather than tokens. */
+.term-body {
+  margin: 0;
+  padding: 18px 22px 20px;
+  overflow-x: auto;
+  color: var(--term-ink);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.term-body code { background: none; padding: 0; color: inherit; font-size: inherit; white-space: pre; }
+.term .prompt, .term .cmt { color: #8b949e; }
+
+/* ---- install, in the hero ---- */
+
+.install {
+  max-width: 760px;
+  margin: 0 auto 18px;
+  text-align: left;
+}
+
+.install-tabs { display: flex; justify-content: center; gap: 6px; margin-bottom: 10px; }
+.install-tabs[hidden] { display: none; }
+
+.install-tabs button {
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  padding: 6px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.install-tabs button:hover:not([aria-selected="true"]) { color: var(--text); border-color: var(--text-soft); }
+
+.install-tabs button[aria-selected="true"] {
+  color: #fff;
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+
+.install-cmd + .install-cmd { margin-top: 22px; }
+.install-cmd[hidden] { display: none; }
+.install.tabbed .install-cmd + .install-cmd { margin-top: 0; }
+.install.tabbed .install-label { display: none; }
+
+.install-label { margin: 0 0 6px; font-weight: 700; font-size: 0.95rem; }
+
+/* A terminal line: dark, one row, scrolling sideways on a narrow screen
+   rather than wrapping a command someone is about to paste. */
+.install-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--term);
+}
+
+.install-line code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 4px 0;
+  background: none;
+  color: var(--term-ink);
+  font-size: 0.9rem;
+}
+
+.install-line .copy {
+  flex: none;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-dark);
+  color: #fff;
+  cursor: pointer;
+}
+
+.install-line .copy { transition: background 0.15s ease; }
+.install-line .copy:hover { background: var(--accent); }
+.install-line .copy[hidden] { display: none; }
+
+.install-note {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 0.88rem;
+  color: var(--text-soft);
+}
+
+.install-note code { font-size: 0.85em; }
+
+.alt {
+  margin: 0 0 34px;
+  font-size: 0.92rem;
+  color: var(--text-soft);
+}
+
+.alt code { font-size: 0.85em; white-space: nowrap; }
+
+/* ---- sections ---- */
+
+main > section {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 80px 24px 0;
+}
+
+main > section:last-child { padding-bottom: 80px; }
+
+main h2 {
+  font-size: clamp(1.4rem, 3vw, 1.8rem);
+  margin: 0 0 12px;
+}
+
+/* A short cyan tick above the plain section titles, the same accent the
+   feature cards and the headline carry. */
+.usage > h2::before,
+.details > h2::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 3px;
+  margin-bottom: 14px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+
+/* ---- feature cards ---- */
+
+.beats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.beats > div {
+  padding: 24px 26px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.beats > div:hover {
+  transform: translateY(-3px);
+  background: var(--card-hover);
+  border-color: var(--accent-glow);
+}
+
+.beats h2 { font-size: 1.2rem; margin-bottom: 8px; }
+
+.beats h2::before {
+  content: "";
+  display: block;
+  width: 28px;
+  height: 3px;
+  margin-bottom: 14px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.beats p { margin: 0; font-size: 0.97rem; color: var(--text-soft); }
+.beats code { font-size: 0.85em; padding: 2px 6px; }
+
+/* Boxes that scroll sideways on a narrow screen get a thin, muted scrollbar
+   where the platform draws one, rather than a bright bar across a dark
+   terminal. */
+.term-body, .install-line code {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(139, 148, 158, 0.4) transparent;
+}
+
+/* ---- usage ---- */
+
+.usage .term { margin-top: 20px; }
+
+/* ---- details ---- */
+
+.details ul { margin: 16px 0 0; padding-left: 1.2em; max-width: 72ch; }
+.details li { margin-bottom: 10px; color: var(--text-soft); font-size: 0.97rem; }
+.details li::marker { color: var(--accent); }
+.details code { font-size: 0.85em; }
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-lift);
+  color: var(--text);
+}
+
+/* ---- footer ---- */
+
+footer {
+  padding: 34px 24px 52px;
+  text-align: center;
+  background: var(--bg-deep);
+  border-top: 1px solid var(--line);
+}
+
+footer p { margin: 0 auto 8px; max-width: 62ch; }
+
+.fineprint { font-size: 0.85rem; color: var(--text-soft); }
+
+@media (max-width: 720px) {
+  /* Room above the title for the corner links, which would sit on it. */
+  .hero { padding-top: 76px; }
+  .top { top: 14px; right: 14px; }
+  .hero::before { top: 90px; height: 120px; }
+  .term-body { padding: 14px 16px 16px; font-size: 0.72rem; }
+  main > section { padding: 56px 20px 0; }
+  main > section:last-child { padding-bottom: 56px; }
+}
