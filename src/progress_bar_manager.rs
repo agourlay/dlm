@@ -5,7 +5,7 @@ use indicatif::{
     HumanBytes, HumanDuration, MultiProgress, ProgressBar, ProgressDrawTarget, ProgressState,
     ProgressStyle,
 };
-use jiff::Zoned;
+use jiff::ZonedDateTime;
 use std::cmp::{Ordering, min};
 
 const PENDING: &str = "pending";
@@ -226,7 +226,7 @@ impl ProgressBarManager {
     /// The timestamp stays uncoloured; only the message carries the level, so
     /// the left margin reads evenly down the log.
     fn log_at(&self, msg: impl std::fmt::Display) {
-        let now = Zoned::now().strftime("%Y-%m-%d %H:%M:%S");
+        let now = ZonedDateTime::now().strftime("%Y-%m-%d %H:%M:%S");
         self.print_line(&format!("[{now}] {msg}"));
     }
 
